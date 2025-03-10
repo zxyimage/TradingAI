@@ -1,0 +1,9 @@
+TradingAI/
+├── docker-compose.yaml
+├── .env
+├── backend/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── stock_data_fetcher.py
+│   └── config.py
+└── README.md

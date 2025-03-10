@@ -1,0 +1,46 @@
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: stock_timescaledb
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=stockuser
+      - POSTGRES_PASSWORD=stockpassword
+      - POSTGRES_DB=stockdb
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - stock-network
+
+  stock-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: stock_backend
+    depends_on:
+      - timescaledb
+    environment:
+      - DB_HOST=timescaledb
+      - DB_USER=stockuser
+      - DB_PASSWORD=stockpassword
+      - DB_NAME=stockdb
+      # 使用特殊的Docker DNS名称连接宿主机上的FutuOpenD
+      - FUTU_HOST=host.docker.internal
+      - FUTU_PORT=${FUTU_PORT:-11111}
+    volumes:
+      - ./backend:/app
+    networks:
+      - stock-network
+    # 确保host.docker.internal在Linux上也能工作
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  stock-network:
+    driver: bridge
+
+volumes:
+  timescaledb_data:
