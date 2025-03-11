@@ -35,11 +35,11 @@ def init_database(engine):
         # 启用TimescaleDB扩展
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;"))
         
-        # 创建股票基础信息表
+        # 创建股票基础信息表 - 添加 UNIQUE 约束到 code 字段
         conn.execute(text("""
         CREATE TABLE IF NOT EXISTS stock_info (
             id SERIAL PRIMARY KEY,
-            code VARCHAR(20) NOT NULL,
+            code VARCHAR(20) NOT NULL UNIQUE,  -- 添加 UNIQUE 约束
             name VARCHAR(100),
             lot_size INTEGER,
             stock_type VARCHAR(50),
@@ -75,6 +75,82 @@ def init_database(engine):
         
         conn.commit()
 
+# 添加到 stock_data_fetcher.py 文件中
+
+def ensure_code_unique_constraint(engine):
+    """
+    确保 stock_info 表中的 code 字段有唯一约束
+    """
+    print("检查并确保 stock_info 表的 code 字段有唯一约束...")
+    
+    with engine.connect() as conn:
+        # 检查是否已经存在唯一约束
+        check_query = text("""
+        SELECT COUNT(*) FROM pg_constraint 
+        WHERE conrelid = 'stock_info'::regclass 
+        AND contype = 'u' 
+        AND conkey @> ARRAY[
+            (SELECT attnum FROM pg_attribute 
+             WHERE attrelid = 'stock_info'::regclass AND attname = 'code')
+        ]::smallint[]
+        """)
+        
+        try:
+            result = conn.execute(check_query).scalar()
+            
+            if result == 0:
+                print("stock_info 表的 code 字段没有唯一约束，正在添加...")
+                
+                # 首先处理可能的重复记录
+                # 获取所有重复的代码
+                dupes_query = text("""
+                SELECT code, COUNT(*) 
+                FROM stock_info 
+                GROUP BY code 
+                HAVING COUNT(*) > 1
+                """)
+                
+                dupes = conn.execute(dupes_query).fetchall()
+                
+                if dupes:
+                    print(f"发现 {len(dupes)} 个有重复记录的股票代码，正在清理...")
+                    
+                    for code, count in dupes:
+                        # 对于每个重复的代码，保留最新的一条记录
+                        delete_query = text("""
+                        DELETE FROM stock_info
+                        WHERE id IN (
+                            SELECT id FROM stock_info
+                            WHERE code = :code
+                            ORDER BY updated_at DESC
+                            OFFSET 1
+                        )
+                        """)
+                        
+                        conn.execute(delete_query, {"code": code})
+                    
+                    print("重复记录清理完成")
+                
+                # 添加唯一约束
+                alter_query = text("""
+                ALTER TABLE stock_info ADD CONSTRAINT stock_info_code_key UNIQUE (code)
+                """)
+                
+                conn.execute(alter_query)
+                conn.commit()
+                
+                print("唯一约束添加成功")
+            else:
+                print("stock_info 表的 code 字段已有唯一约束，无需修改")
+                
+        except Exception as e:
+            print(f"检查或添加唯一约束时出错: {e}")
+            traceback.print_exc()
+            conn.rollback()
+
+
+
+
 # 实时行情处理类
 class StockQuoteHandler(StockQuoteHandlerBase):
     def __init__(self):
@@ -104,7 +180,7 @@ class StockQuoteHandler(StockQuoteHandlerBase):
                     calculate_and_store_moving_averages(stock_code)
                     
                     # 记录日志
-                    print(f"已更新 {stock_code} 实时价格: {last_price}")
+                    #print(f"已更新 {stock_code} 实时价格: {last_price}")
                 except Exception as e:
                     print(f"存储实时数据时出错: {e}")
         
@@ -150,7 +226,7 @@ class KLineHandler(CurKlineHandlerBase):
                         # 保留最近100条K线数据
                         redis_client.ltrim(f"stock:kline:{stock_code}", -100, -1)
                         
-                        print(f"已更新 {stock_code} K线数据, 时间: {k_time}, 收盘价: {close_price}")
+                        #print(f"已更新 {stock_code} K线数据, 时间: {k_time}, 收盘价: {close_price}")
                     except Exception as e:
                         print(f"存储K线数据时出错: {e}")
                         traceback.print_exc()
@@ -258,7 +334,7 @@ def calculate_and_store_moving_averages(stock_code):
                 # 存储推荐级别
                 redis_client.hset(f"stock:realtime:{stock_code}", "recommendation_level", recommendation_level)
                 
-                print(f"{stock_code} 均线计算完成，当前价格: {current_price}，推荐级别: {recommendation_level}")
+                #print(f"{stock_code} 均线计算完成，当前价格: {current_price}，推荐级别: {recommendation_level}")
                 
     except Exception as e:
         print(f"计算 {stock_code} 均线时出错: {e}")
@@ -447,19 +523,23 @@ def update_missing_stock_names():
     
     print(f"发现 {len(missing_names)} 支股票缺少名称，即将获取...")
     
-    # 连接到Futu API获取名称
-    quote_ctx = connect_futu_api()
-    
     try:
-        # 获取股票名称
-        stock_names = get_stock_names(quote_ctx, missing_names)
+        # 连接到Futu API获取名称
+        quote_ctx = connect_futu_api()
         
-        # 更新到数据库
-        if stock_names:
-            update_stock_names(engine, stock_names)
-    finally:
-        # 关闭Futu连接
-        quote_ctx.close()
+        try:
+            # 获取股票名称
+            stock_names = get_stock_names(quote_ctx, missing_names)
+            
+            # 更新到数据库
+            if stock_names:
+                update_stock_names(engine, stock_names)
+        finally:
+            # 确保关闭Futu连接
+            quote_ctx.close()
+    except Exception as e:
+        print(f"获取股票名称时发生错误: {e}")
+        traceback.print_exc()
     
     print("股票名称更新完成")
 
@@ -598,7 +678,7 @@ def store_stock_info(engine, stock_info_df):
 
 # 更新股票数据（定时执行）
 def update_stock_data():
-    print(f"开始更新股票数据，时间: {datetime.now()}")
+    #print(f"开始更新股票数据，时间: {datetime.now()}")
     
     # 连接到数据库
     engine = get_db_engine()
@@ -617,7 +697,7 @@ def update_stock_data():
                 stock_data = get_kline_data(quote_ctx, stock_code, start_date, end_date)
                 if stock_data is not None and not stock_data.empty:
                     store_stock_prices(engine, stock_data, stock_code)
-                    print(f"已更新 {stock_code} 数据")
+                    #print(f"已更新 {stock_code} 数据")
                 else:
                     print(f"{stock_code} 没有新数据")
             except Exception as e:
@@ -661,6 +741,9 @@ def initialize():
     engine = get_db_engine()
     init_database(engine)
     
+    # 确保 code 字段有唯一约束
+    ensure_code_unique_constraint(engine)
+    
     try:
         # 连接到Futu API - 获取基本信息
         quote_ctx = connect_futu_api()
@@ -678,9 +761,6 @@ def initialize():
             us_stocks = get_stock_info(quote_ctx, Market.US)
             if us_stocks is not None:
                 store_stock_info(engine, us_stocks)
-            
-            # 更新缺失的股票名称
-            update_missing_stock_names()
                 
         except Exception as e:
             print(f"获取股票基本信息时出错: {e}")
@@ -723,6 +803,13 @@ def initialize():
             
     except Exception as e:
         print(f"初始化过程中出错: {e}")
+    
+    # 无论前面的步骤是否成功，都确保更新一次股票名称
+    try:
+        print("强制更新缺失的股票名称...")
+        update_missing_stock_names()
+    except Exception as e:
+        print(f"强制更新股票名称时出错: {e}")
         
     print("初始化完成")
 
@@ -744,6 +831,11 @@ if __name__ == "__main__":
     # 每天早上定时更新缺失的股票名称
     scheduler.add_job(update_missing_stock_names, 'cron', hour=9, minute=30, 
                      id='stock_names_update', name='股票名称更新')
+                     
+    # 立即运行一次股票名称更新（系统启动时）
+    scheduler.add_job(update_missing_stock_names, 'date', 
+                     run_date=datetime.now() + timedelta(seconds=10),
+                     id='stock_names_initial_update', name='初始股票名称更新')
     
     print("调度器已启动。按Ctrl+C退出。")
     

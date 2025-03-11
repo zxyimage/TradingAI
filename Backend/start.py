@@ -20,6 +20,15 @@ def run_data_fetcher():
                      hour=16, minute=0, timezone='Asia/Hong_Kong',
                      id='hk_market_update', name='香港市场更新')
     
+    # # 每天早上定时更新缺失的股票名称
+    # scheduler.add_job(stock_data_fetcher.update_missing_stock_names, 'cron', hour=9, minute=30, 
+    #                  id='stock_names_update', name='股票名称更新')
+                     
+    # # 立即运行一次股票名称更新（系统启动时）
+    # scheduler.add_job(stock_data_fetcher.update_missing_stock_names, 'date', 
+    #                  run_date=datetime.now() + timedelta(seconds=10),
+    #                  id='stock_names_initial_update', name='初始股票名称更新')
+    
     print("数据获取调度器已启动")
     
     try:
