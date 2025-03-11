@@ -5,15 +5,11 @@ import numpy as np
 from sqlalchemy import create_engine, text
 from futu import *
 from apscheduler.schedulers.blocking import BlockingScheduler
-from config import DB_CONFIG, FUTU_CONFIG, STOCKS_TO_TRACK
+from config import DB_CONFIG, FUTU_CONFIG, STOCKS_TO_TRACK, REDIS_CONFIG
 import redis
 import json
 import threading
 import traceback
-# 在 stock_data_fetcher.py 文件顶部的导入部分，添加:
-from config import DB_CONFIG, FUTU_CONFIG, STOCKS_TO_TRACK, REDIS_CONFIG
-# 在 stock_ai_analyzer.py 文件顶部的导入部分，添加:
-from config import REDIS_CONFIG
 
 # 创建Redis连接
 try:
@@ -33,7 +29,7 @@ def get_db_engine():
     conn_str = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
     return create_engine(conn_str)
 
-# 初始化数据库模式 (保持原有函数不变)
+# 初始化数据库模式
 def init_database(engine):
     with engine.connect() as conn:
         # 启用TimescaleDB扩展
@@ -305,7 +301,7 @@ def calculate_recommendation_level(current_price, ma_data):
         print(f"计算推荐级别时出错: {e}")
         return 6  # 默认不推荐
 
-# 将股票价格数据存储到数据库 (保持原有函数不变)
+# 将股票价格数据存储到数据库
 def store_stock_prices(engine, price_df, code):
     # 重命名列以匹配我们的数据库模式
     columns_map = {
@@ -325,6 +321,147 @@ def store_stock_prices(engine, price_df, code):
     # 存储数据到数据库
     df.to_sql('stock_price', engine, if_exists='append', index=False, method='multi')
     print(f"已存储 {len(df)} 条 {code} 的价格记录")
+
+# 检查股票名称是否存在于数据库中
+def check_stock_names(engine, stock_codes):
+    """
+    检查股票代码是否有对应的股票名称存储在数据库中
+    
+    参数:
+    engine: 数据库引擎
+    stock_codes: 股票代码列表
+    
+    返回:
+    dict: 包含股票代码和是否有名称的字典
+    """
+    result = {}
+    
+    with engine.connect() as conn:
+        for code in stock_codes:
+            query = text("""
+            SELECT name FROM stock_info
+            WHERE code = :code AND name IS NOT NULL
+            LIMIT 1
+            """)
+            
+            db_result = conn.execute(query, {"code": code})
+            row = db_result.fetchone()
+            
+            if row and row[0]:  # 如果有名称且非空
+                result[code] = True
+            else:
+                result[code] = False
+    
+    return result
+
+# 使用get_market_state获取股票名称
+def get_stock_names(quote_ctx, stock_codes):
+    """
+    使用get_market_state接口获取股票名称
+    
+    参数:
+    quote_ctx: FutuAPI上下文
+    stock_codes: 股票代码列表
+    
+    返回:
+    dict: 股票代码到名称的映射
+    """
+    result = {}
+    
+    # 由于API限制，每次最多请求10个股票，分批处理
+    batch_size = 10
+    for i in range(0, len(stock_codes), batch_size):
+        batch = stock_codes[i:i+batch_size]
+        try:
+            ret, data = quote_ctx.get_market_state(batch)
+            if ret == RET_OK:
+                for index, row in data.iterrows():
+                    code = row['code']
+                    name = row.get('stock_name', '')
+                    if name:
+                        result[code] = name
+                        print(f"获取到股票名称: {code} - {name}")
+            else:
+                print(f"获取股票市场状态失败: {data}")
+            
+            # 限制API请求速率
+            if i + batch_size < len(stock_codes):
+                print(f"等待30秒后请求下一批股票名称...")
+                time.sleep(30)
+        except Exception as e:
+            print(f"获取股票市场状态时出错: {e}")
+    
+    return result
+
+# 更新股票名称到数据库
+def update_stock_names(engine, stock_names):
+    """
+    更新股票名称到数据库
+    
+    参数:
+    engine: 数据库引擎
+    stock_names: 股票代码到名称的映射
+    """
+    try:
+        with engine.connect() as conn:
+            for code, name in stock_names.items():
+                query = text("""
+                INSERT INTO stock_info (code, name, updated_at)
+                VALUES (:code, :name, :updated_at)
+                ON CONFLICT (code) 
+                DO UPDATE SET name = :name, updated_at = :updated_at
+                """)
+                
+                conn.execute(query, {
+                    "code": code,
+                    "name": name,
+                    "updated_at": datetime.now()
+                })
+            
+            conn.commit()
+            print(f"已更新 {len(stock_names)} 支股票的名称到数据库")
+    except Exception as e:
+        print(f"更新股票名称到数据库时出错: {e}")
+        traceback.print_exc()
+
+# 更新股票名称（定时执行）
+def update_missing_stock_names():
+    """
+    更新数据库中缺少名称的股票信息
+    """
+    print("开始获取缺失的股票名称...")
+    
+    # 连接到数据库
+    engine = get_db_engine()
+    
+    # 获取所有跟踪的股票
+    stock_codes = STOCKS_TO_TRACK
+    
+    # 检查哪些股票在数据库中没有名称
+    name_status = check_stock_names(engine, stock_codes)
+    missing_names = [code for code, has_name in name_status.items() if not has_name]
+    
+    if not missing_names:
+        print("所有股票都已有名称，无需更新")
+        return
+    
+    print(f"发现 {len(missing_names)} 支股票缺少名称，即将获取...")
+    
+    # 连接到Futu API获取名称
+    quote_ctx = connect_futu_api()
+    
+    try:
+        # 获取股票名称
+        stock_names = get_stock_names(quote_ctx, missing_names)
+        
+        # 更新到数据库
+        if stock_names:
+            update_stock_names(engine, stock_names)
+    finally:
+        # 关闭Futu连接
+        quote_ctx.close()
+    
+    print("股票名称更新完成")
 
 # 连接到Futu OpenAPI 并订阅实时数据
 def subscribe_realtime_data():
@@ -373,7 +510,7 @@ def subscribe_realtime_data():
             quote_ctx.close()
             print("已关闭Futu API连接")
 
-# 获取股票基本信息 (保持原有函数不变)
+# 获取股票基本信息
 def get_stock_info(quote_ctx, market):
     try:
         ret, data = quote_ctx.get_stock_basicinfo(market, SecurityType.STOCK)
@@ -400,7 +537,7 @@ def get_stock_info(quote_ctx, market):
         print(f"获取 {market} 市场股票信息时发生异常: {e}")
         return None
 
-# 获取历史K线数据 (保持原有函数不变)
+# 获取历史K线数据
 def get_kline_data(quote_ctx, code, start_date, end_date, ktype=KLType.K_DAY):
     try:
         # 查阅文档修正API调用
@@ -424,7 +561,7 @@ def get_kline_data(quote_ctx, code, start_date, end_date, ktype=KLType.K_DAY):
         print("详细traceback:", traceback.format_exc())
         return None
 
-# 将股票信息存储到数据库 (保持原有函数不变)
+# 将股票信息存储到数据库
 def store_stock_info(engine, stock_info_df):
     if stock_info_df is None or stock_info_df.empty:
         print("警告: 没有股票信息可存储")
@@ -485,6 +622,9 @@ def update_stock_data():
                     print(f"{stock_code} 没有新数据")
             except Exception as e:
                 print(f"更新 {stock_code} 时出错: {e}")
+        
+        # 更新缺失的股票名称
+        update_missing_stock_names()
                 
     finally:
         # 关闭Futu连接
@@ -513,7 +653,7 @@ def connect_futu_api():
         print("请确保FutuOpenD正在运行并且可以访问。")
         raise
 
-# 初始化函数 - 系统启动时运行一次 (保持原有函数不变，但启动实时订阅)
+# 初始化函数 - 系统启动时运行一次
 def initialize():
     print("初始化股票数据系统...")
     
@@ -538,6 +678,9 @@ def initialize():
             us_stocks = get_stock_info(quote_ctx, Market.US)
             if us_stocks is not None:
                 store_stock_info(engine, us_stocks)
+            
+            # 更新缺失的股票名称
+            update_missing_stock_names()
                 
         except Exception as e:
             print(f"获取股票基本信息时出错: {e}")
@@ -597,6 +740,10 @@ if __name__ == "__main__":
     # 为香港市场设置更新（香港时间下午4:00）
     scheduler.add_job(update_stock_data, 'cron', hour=16, minute=0, timezone='Asia/Hong_Kong',
                      id='hk_market_update', name='香港市场更新')
+    
+    # 每天早上定时更新缺失的股票名称
+    scheduler.add_job(update_missing_stock_names, 'cron', hour=9, minute=30, 
+                     id='stock_names_update', name='股票名称更新')
     
     print("调度器已启动。按Ctrl+C退出。")
     

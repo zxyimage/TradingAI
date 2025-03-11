@@ -285,6 +285,15 @@ async def get_stored_stocks():
                 latest_row = latest_rows[0] if latest_rows else None
                 previous_row = latest_rows[1] if len(latest_rows) > 1 else None
                 
+                # 首先，获取所有股票的名称
+                names_query = text("""
+                SELECT code, name FROM stock_info
+                WHERE code IN :codes
+                """)
+                            
+                names_result = conn.execute(names_query, {"codes": tuple(stock_codes) if len(stock_codes) > 1 else f"('{stock_codes[0]}')"})
+                stock_names = {row.code: row.name for row in names_result}
+
                 # 获取记录总数和日期范围
                 stats_query = text("""
                 SELECT 
@@ -307,6 +316,7 @@ async def get_stored_stocks():
                     
                     stocks_data.append({
                         'code': latest_row.code,
+                        'name': stock_names.get(latest_row.code, ''),
                         'latest_data': {
                             'time': latest_row.time.isoformat(),
                             'open': float(latest_row.open) if latest_row.open else None,
@@ -464,6 +474,35 @@ async def get_ranked_stocks():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取排序股票时出错: {str(e)}")
 
+
+# 新API端点: 获取所有股票名称
+@app.get("/api/stock_names", tags=["股票数据"])
+async def get_stock_names():
+    """
+    获取所有追踪的股票代码和对应的名称
+    """
+    try:
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            query = text("""
+            SELECT code, name FROM stock_info
+            WHERE name IS NOT NULL
+            ORDER BY code
+            """)
+            
+            result = conn.execute(query)
+            stock_names = {}
+            
+            for row in result:
+                stock_names[row.code] = row.name
+            
+            return {
+                "success": True,
+                "stock_names": stock_names
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取股票名称时出错: {str(e)}")
+
 # 健康检查端点
 @app.get("/health", tags=["系统"])
 async def health_check():
@@ -485,6 +524,8 @@ async def system_info():
         "tracked_stocks_count": len(STOCKS_TO_TRACK),
         "tracked_stocks": STOCKS_TO_TRACK
     }
+
+
 
 # 如果直接运行此文件，启动Uvicorn服务器
 if __name__ == "__main__":

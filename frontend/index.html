@@ -262,6 +262,7 @@
 
         // 页面加载时获取s列表和存储的数据
         document.addEventListener('DOMContentLoaded', async () => {
+            await loadStockNames(); 
             await loadStocksList();
             await loadStoredStocksData();
             await loadRankedStocks();
@@ -283,7 +284,7 @@
                 data.stocks.forEach(stock => {
                     const option = document.createElement('option');
                     option.value = stock;
-                    option.textContent = stock;
+                    option.textContent = formatStockCodeName(stock);
                     stockCodeSelect.appendChild(option);
                 });
             } catch (error) {
@@ -397,7 +398,7 @@
                     <div class="col-md-4 mb-3">
                         <div class="card h-100 ${levelClass}">
                             <div class="card-body">
-                                <h5 class="card-title">${stock.code}</h5>
+                                <h5 class="card-title">${formatStockCodeName(stock.code)}</h5>
                                 <h6 class="card-subtitle mb-2 text-muted">价格: ${stock.price.toFixed(2)}</h6>
                                 <p class="card-text ${actionClass} fw-bold">推荐: ${stock.recommendation_text}</p>
                                 <div class="mb-2">
@@ -492,7 +493,7 @@
             // 构建HTML
             let analysisHtml = `
                 <div class="mb-3">
-                    <h6>s代码: ${stockCode}</h6>
+                    <h6>s代码: ${formatStockCodeName(stockCode)}</h6>
                     <p class="text-muted small">更新时间: ${formattedTime}</p>
                 </div>
                 
@@ -913,7 +914,7 @@
                 
                 tableHtml += `
                     <tr>
-                        <td>${stock.code}</td>
+                        <td>${formatStockCodeName(stock.code)}</td>
                         <td>${formatDate(latestData.time)}</td>
                         <td>${latestData.close !== null ? latestData.close.toFixed(2) : '-'}</td>
                         <td class="${changeClass}">${changePercent}</td>
@@ -1011,7 +1012,7 @@
             
             // 显示s信息
             let infoHtml = `<div class="alert alert-info">`;
-            infoHtml += `<h6>s代码: ${code}</h6>`;
+            infoHtml += `<h6>s代码: ${formatStockCodeName(code)}</h6>`;
             
             if (info) {
                 infoHtml += `<p class="mb-1">s名称: ${info.name || '-'}</p>`;
@@ -1182,6 +1183,37 @@
             
             return result;
         }
+
+
+        // 1. 添加一个新的全局变量用于存储股票名称
+        let stockNamesMap = {};
+
+        // 2. 添加一个新的函数用于加载股票名称
+        async function loadStockNames() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/stock_names`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    stockNamesMap = data.stock_names || {};
+                    console.log("已加载股票名称:", Object.keys(stockNamesMap).length);
+                } else {
+                    console.error("加载股票名称失败:", data.message);
+                }
+            } catch (error) {
+                console.error("获取股票名称出错:", error);
+            }
+        }
+
+        // 4. 添加一个辅助函数用于格式化股票代码和名称
+        function formatStockCodeName(code) {
+            const name = stockNamesMap[code] || '';
+            if (name) {
+                return `${code} - ${name}`;
+            }
+            return code;
+        }
+
     </script>
 </body>
 </html>
