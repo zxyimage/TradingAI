@@ -36,6 +36,9 @@ services:
       - redis
     ports:
       - "8000:5000"  # 暴露API服务端口
+    # 添加环境变量文件
+    env_file:
+      - ./.env
     environment:
       - DB_HOST=timescaledb
       - DB_USER=stockuser
@@ -47,6 +50,9 @@ services:
       # 使用特殊的Docker DNS名称连接宿主机上的FutuOpenD
       - FUTU_HOST=host.docker.internal
       - FUTU_PORT=${FUTU_PORT:-11111}
+      # 显式添加API密钥和CORS设置
+      - TRADING_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
+      - ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://localhost:3000,http://frontend:3000
     volumes:
       - ./backend:/app
     networks:
@@ -64,9 +70,14 @@ services:
       - stock-backend
     ports:
       - "3000:3000"
+    # 添加环境变量文件
+    env_file:
+      - ./.env
     environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
+      # 在Docker环境中使用服务名
+      - NEXT_PUBLIC_API_BASE_URL=http://stock-backend:5000/api
       - NEXT_PUBLIC_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
+      - NODE_ENV=production
     restart: unless-stopped
     networks:
       - stock-network

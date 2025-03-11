@@ -15,6 +15,20 @@ from pydantic import BaseModel
 from config import STOCKS_TO_TRACK, update_stocks_to_track, reload_configuration, DB_CONFIG
 from stock_ai_analyzer import StockAIAnalyzer
 
+
+# 创建Redis连接
+try:
+    redis_client = redis.Redis(
+        host=REDIS_CONFIG["host"], 
+        port=REDIS_CONFIG["port"], 
+        db=REDIS_CONFIG["db"], 
+        decode_responses=REDIS_CONFIG["decode_responses"]
+    )
+    print(f"API服务器: 成功连接到Redis: {REDIS_CONFIG['host']}:{REDIS_CONFIG['port']}")
+except Exception as e:
+    print(f"API服务器: Redis连接错误: {e}")
+    redis_client = None
+
 # API密钥配置 - 推荐使用环境变量存储密钥
 API_KEY = os.getenv("TRADING_API_KEY", "your-secret-api-key")  # 请替换为你的密钥
 API_KEY_NAME = "X-API-Key"
@@ -22,6 +36,9 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 # 定义允许的域名列表
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080,http://127.0.0.1:8080").split(",")
+
+print(f"API服务器启动，使用的API密钥: {API_KEY}")
+print(f"允许的源: {ALLOWED_ORIGINS}")
 
 # API密钥验证函数
 async def get_api_key(api_key_header: str = Depends(api_key_header)):
@@ -156,7 +173,9 @@ RATE_LIMIT_REQUESTS = 10  # 允许的最大请求数
 
 # 速率限制依赖函数
 async def rate_limit(request: Request):
-    # 使用Redis客户端 - 复用已有的Redis连接
+    # 使用全局的 Redis 客户端
+    global redis_client
+    
     if redis_client:
         client_ip = request.client.host
         key = f"ratelimit:{client_ip}"

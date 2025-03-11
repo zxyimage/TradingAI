@@ -12,8 +12,8 @@ export function Header() {
         <div className="flex items-center">
           <MobileNav />
           <Link href="/" className="flex items-center space-x-2">
-            <span className="hidden sm:inline-block font-bold text-xl">sAI分析系统</span>
-            <span className="sm:hidden font-bold text-xl">sAI</span>
+            <span className="hidden sm:inline-block font-bold text-xl">AI 分析系统</span>
+            <span className="sm:hidden font-bold text-xl">AI</span>
           </Link>
         </div>
         <div className="flex items-center space-x-4">

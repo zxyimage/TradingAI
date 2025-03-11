@@ -12,13 +12,39 @@ import {
   StockListResponse
 } from './types';
 
+// 获取环境变量（加入调试日志）
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+const apiKey = process.env.NEXT_PUBLIC_API_KEY;
+
+console.log('[DEBUG] API Base URL:', apiBaseUrl);
+console.log('[DEBUG] API Key configured:', apiKey ? 'Yes (length: ' + apiKey.length + ')' : 'No');
+
 // 创建axios实例
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  baseURL: apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
-    'X-API-Key': process.env.NEXT_PUBLIC_API_KEY
+    'X-API-Key': apiKey || 'your-secret-api-key' // 提供后备值
   }
+});
+
+// 请求拦截器 - 添加日志
+api.interceptors.request.use(request => {
+  console.log('[DEBUG] API Request:', request.method, request.url);
+  console.log('[DEBUG] Request Headers:', request.headers);
+  return request;
+}, error => {
+  console.error('[ERROR] API Request Error:', error);
+  return Promise.reject(error);
+});
+
+// 响应拦截器 - 添加日志
+api.interceptors.response.use(response => {
+  console.log('[DEBUG] API Response Status:', response.status);
+  return response;
+}, error => {
+  console.error('[ERROR] API Response Error:', error.response?.status, error.response?.data || error.message);
+  return Promise.reject(error);
 });
 
 // 获取股票列表

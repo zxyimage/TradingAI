@@ -10,17 +10,21 @@ import '@/styles/globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'sAI股票分析系统',
+  title: 'AI股票分析系统',
   description: '股票AI分析系统，帮助用户分析股票数据，辅助做决策',
 };
 
+// 在适当位置添加导入
+import { Toaster } from "@/components/ui/toaster";
+
+// 在 return 语句中的适当位置添加 Toaster 组件
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" className="dark">
       <body className={inter.className}>
         <Providers>
           <div className="min-h-screen flex flex-col">
