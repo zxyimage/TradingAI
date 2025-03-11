@@ -18,7 +18,7 @@ services:
     image: redis:alpine
     container_name: stock_redis
     ports:
-      - "6379:6379"
+      - "16379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -35,7 +35,7 @@ services:
       - timescaledb
       - redis
     ports:
-      - "8000:5000"  # 暴露API服务端口
+      - "18000:5000"  # 暴露API服务端口
     # 添加环境变量文件
     env_file:
       - ./.env
@@ -46,7 +46,7 @@ services:
       - DB_NAME=stockdb
       # Redis配置
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=16379
       # 使用特殊的Docker DNS名称连接宿主机上的FutuOpenD
       - FUTU_HOST=host.docker.internal
       - FUTU_PORT=${FUTU_PORT:-11111}
