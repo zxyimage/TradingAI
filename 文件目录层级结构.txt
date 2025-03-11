@@ -1,9 +1,16 @@
 TradingAI/
 ├── docker-compose.yaml
 ├── .env
+├── timescaledb_data/
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── stock_data_fetcher.py
+│   ├── api_server.py
+│   ├── start.py
+│   ├── stock_ai_analyzer.py
+│   ├── stocks_config.json
 │   └── config.py
+├── frontend/
+│   ├── index.html
 └── README.md

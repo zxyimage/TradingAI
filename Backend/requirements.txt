@@ -4,3 +4,7 @@ sqlalchemy
 pandas
 python-dotenv
 apscheduler
+fastapi
+uvicorn
+pydantic
+typing-extensions

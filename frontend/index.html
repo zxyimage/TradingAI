@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sAI分析系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 20px;
+        }
+        .stock-card {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">sAI分析系统</h1>
+        
+        <div class="alert alert-info mb-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <span>系统使用FastAPI提供服务。</span>
+                <a href="http://localhost:8000/docs" target="_blank" class="btn btn-primary btn-sm">查看API文档</a>
+            </div>
+        </div>
+        
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>管理跟踪s</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="stocksList" class="form-label">当前跟踪的s (以逗号分隔)</label>
+                            <textarea class="form-control" id="stocksList" rows="3"></textarea>
+                        </div>
+                        <button id="updateStocks" class="btn btn-primary">更新s列表</button>
+                        <div class="mt-2" id="updateMessage"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>s数据查询</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="stockCode" class="form-label">s代码</label>
+                            <select class="form-control" id="stockCode">
+                                <!-- 动态生成选项 -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="dataDays" class="form-label">数据天数</label>
+                            <select class="form-control" id="dataDays">
+                                <option value="7">7天</option>
+                                <option value="14">14天</option>
+                                <option value="30" selected>30天</option>
+                                <option value="60">60天</option>
+                                <option value="90">90天</option>
+                            </select>
+                        </div>
+                        <button id="queryData" class="btn btn-success">查询数据</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 已存储s数据一览 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>已存储s数据一览</h5>
+                        <button id="refreshStoredData" class="btn btn-outline-primary btn-sm">刷新数据</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="storedDataSummary" class="mb-3">
+                            <p>加载中...</p>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>s代码</th>
+                                        <th>最新日期</th>
+                                        <th>最新收盘价</th>
+                                        <th>涨跌幅</th>
+                                        <th>最高价</th>
+                                        <th>最低价</th>
+                                        <th>成交量</th>
+                                        <th>记录数量</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="storedDataTableBody">
+                                    <tr>
+                                        <td colspan="9" class="text-center">加载中...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>s价格图表</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="stockChart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>AI分析建议</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="aiAnalysis">
+                            <p>请先查询s数据以获取AI分析建议。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- s详细数据模态框 -->
+    <div class="modal fade" id="stockDetailModal" tabindex="-1" aria-labelledby="stockDetailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="stockDetailModalLabel">s详细数据</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="stockDetailInfo" class="mb-3">
+                        <p>加载中...</p>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <canvas id="detailStockChart" width="400" height="200"></canvas>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped" id="stockDetailTable">
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>开盘价</th>
+                                    <th>收盘价</th>
+                                    <th>最高价</th>
+                                    <th>最低价</th>
+                                    <th>成交量</th>
+                                    <th>成交额</th>
+                                    <th>涨跌幅</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stockDetailTableBody">
+                                <tr>
+                                    <td colspan="8" class="text-center">加载中...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // API基础URL - 根据你的实际部署情况修改
+        const API_BASE_URL = 'http://localhost:8000/api';
+        let stockChart = null;
+
+        // 页面加载时获取s列表和存储的数据
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadStocksList();
+            await loadStoredStocksData();
+        });
+
+        // 加载s列表
+        async function loadStocksList() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/stocks`);
+                const data = await response.json();
+                
+                // 更新文本域
+                document.getElementById('stocksList').value = data.stocks.join(',');
+                
+                // 更新下拉菜单
+                const stockCodeSelect = document.getElementById('stockCode');
+                stockCodeSelect.innerHTML = '';
+                
+                data.stocks.forEach(stock => {
+                    const option = document.createElement('option');
+                    option.value = stock;
+                    option.textContent = stock;
+                    stockCodeSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('加载s列表出错:', error);
+            }
+        }
+
+        // 更新s列表
+        document.getElementById('updateStocks').addEventListener('click', async () => {
+            const stocksInput = document.getElementById('stocksList').value;
+            const stocks = stocksInput.split(',').map(s => s.trim()).filter(s => s);
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/stocks`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ stocks })
+                });
+                
+                const result = await response.json();
+                document.getElementById('updateMessage').textContent = result.message;
+                document.getElementById('updateMessage').className = result.success ? 'text-success' : 'text-danger';
+                
+                if (result.success) {
+                    await loadStocksList();
+                }
+            } catch (error) {
+                console.error('更新s列表出错:', error);
+                document.getElementById('updateMessage').textContent = `更新失败: ${error.message}`;
+                document.getElementById('updateMessage').className = 'text-danger';
+            }
+        });
+
+        // 查询s数据
+        document.getElementById('queryData').addEventListener('click', async () => {
+            const stockCode = document.getElementById('stockCode').value;
+            const days = document.getElementById('dataDays').value;
+            
+            if (!stockCode) {
+                alert('请选择s代码');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/stock_data?code=${stockCode}&days=${days}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayStockChart(result.data, stockCode);
+                    generateAIAnalysis(result.data, stockCode);
+                } else {
+                    alert(`获取数据失败: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('查询s数据出错:', error);
+                alert(`查询出错: ${error.message}`);
+            }
+        });
+
+        // 显示s图表
+        function displayStockChart(data, stockCode) {
+            const ctx = document.getElementById('stockChart').getContext('2d');
+            
+            // 整理数据
+            const chartData = {
+                labels: data.map(item => new Date(item.time).toLocaleDateString()),
+                datasets: [
+                    {
+                        label: `${stockCode} 收盘价`,
+                        data: data.map(item => item.close),
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1,
+                        fill: false
+                    },
+                    {
+                        label: `${stockCode} 最高价`,
+                        data: data.map(item => item.high),
+                        borderColor: 'rgb(255, 99, 132)',
+                        tension: 0.1,
+                        fill: false
+                    },
+                    {
+                        label: `${stockCode} 最低价`,
+                        data: data.map(item => item.low),
+                        borderColor: 'rgb(54, 162, 235)',
+                        tension: 0.1,
+                        fill: false
+                    }
+                ]
+            };
+            
+            // 销毁现有图表
+            if (stockChart) {
+                stockChart.destroy();
+            }
+            
+            // 创建新图表
+            stockChart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: '日期'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: '价格'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 生成AI分析建议（从后端API获取）
+        function generateAIAnalysis(data, stockCode) {
+            // 首先检查响应中是否已包含分析数据
+            if (data.analysis) {
+                displayAnalysisResult(data.analysis, stockCode);
+                return;
+            }
+            
+            // 如果响应中没有分析数据，则从分析API获取
+            fetch(`${API_BASE_URL}/stock_analysis?code=${stockCode}&days=${document.getElementById('dataDays').value}`)
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        displayAnalysisResult(result.analysis, stockCode);
+                    } else {
+                        document.getElementById('aiAnalysis').innerHTML = `<p class="text-danger">获取分析失败: ${result.message}</p>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('获取s分析出错:', error);
+                    document.getElementById('aiAnalysis').innerHTML = `<p class="text-danger">分析出错: ${error.message}</p>`;
+                });
+        }
+        
+        // 显示AI分析结果
+        function displayAnalysisResult(analysis, stockCode) {
+            const { recommendations, analysis: technicalAnalysis } = analysis;
+            
+            // 根据建议动作设置样式
+            let actionClass = 'text-warning';
+            if (recommendations.action === 'BUY') {
+                actionClass = 'text-success';
+            } else if (recommendations.action === 'SELL') {
+                actionClass = 'text-danger';
+            }
+            
+            // 格式化建议理由列表
+            const reasonsList = recommendations.reasons.map(reason => `<li>${reason}</li>`).join('');
+            
+            // 构建HTML
+            let analysisHtml = `
+                <h6>s代码: ${stockCode}</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>技术指标</h5>
+                        <table class="table table-sm">
+                            <tr>
+                                <td>最新收盘价</td>
+                                <td>${technicalAnalysis.latest_price.toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <td>价格变动</td>
+                                <td class="${technicalAnalysis.price_change >= 0 ? 'text-success' : 'text-danger'}">
+                                    ${technicalAnalysis.price_change >= 0 ? '+' : ''}${technicalAnalysis.price_change.toFixed(2)}
+                                    (${technicalAnalysis.price_change_percent.toFixed(2)}%)
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>5日均价</td>
+                                <td>${technicalAnalysis.sma5 ? technicalAnalysis.sma5.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
+                                <td>10日均价</td>
+                                <td>${technicalAnalysis.sma10 ? technicalAnalysis.sma10.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
+                                <td>20日均价</td>
+                                <td>${technicalAnalysis.sma20 ? technicalAnalysis.sma20.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
+                                <td>RSI(14)</td>
+                                <td>${technicalAnalysis.rsi ? technicalAnalysis.rsi.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
+                                <td>成交量</td>
+                                <td>${technicalAnalysis.volume ? technicalAnalysis.volume.toLocaleString() : '无数据'}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>交易建议</h5>
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h6 class="${actionClass} text-center fw-bold">建议：${getActionText(recommendations.action)}</h6>
+                                <p>置信度: <span class="fw-bold">${(recommendations.confidence * 100).toFixed(0)}%</span></p>
+                                <p>风险水平: <span class="fw-bold">${getRiskLevelText(recommendations.risk_level)}</span></p>
+                                
+                                <h6>建议理由:</h6>
+                                <ul>${reasonsList}</ul>
+                                
+                                <div class="row mt-3">
+                                    <div class="col-6">
+                                        <p>支撑位: <span class="text-success fw-bold">${recommendations.support_level ? recommendations.support_level.toFixed(2) : '无数据'}</span></p>
+                                    </div>
+                                    <div class="col-6">
+                                        <p>阻力位: <span class="text-danger fw-bold">${recommendations.resistance_level ? recommendations.resistance_level.toFixed(2) : '无数据'}</span></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 免责声明 -->
+                <p class="text-muted mt-3"><small>免责声明：以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。</small></p>
+            `;
+            
+            document.getElementById('aiAnalysis').innerHTML = analysisHtml;
+        }
+        
+        // 获取操作建议文本
+        function getActionText(action) {
+            switch(action) {
+                case 'BUY': return '买入';
+                case 'SELL': return '卖出';
+                case 'HOLD': return '观望';
+                default: return action;
+            }
+        }
+        
+        // 获取风险水平文本
+        function getRiskLevelText(level) {
+            switch(level) {
+                case 'LOW': return '低风险';
+                case 'MEDIUM': return '中等风险';
+                case 'HIGH': return '高风险';
+                default: return level;
+            }
+        }
+        
+        // 加载存储的s数据
+        async function loadStoredStocksData() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/stored_stocks`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayStoredStocksData(result);
+                } else {
+                    document.getElementById('storedDataSummary').innerHTML = `<p class="text-danger">获取数据失败: ${result.message}</p>`;
+                    document.getElementById('storedDataTableBody').innerHTML = `<tr><td colspan="9" class="text-center text-danger">获取数据失败</td></tr>`;
+                }
+            } catch (error) {
+                console.error('加载存储s数据出错:', error);
+                document.getElementById('storedDataSummary').innerHTML = `<p class="text-danger">加载出错: ${error.message}</p>`;
+                document.getElementById('storedDataTableBody').innerHTML = `<tr><td colspan="9" class="text-center text-danger">加载出错</td></tr>`;
+            }
+        }
+        
+        // 显示存储的s数据
+        function displayStoredStocksData(data) {
+            // 显示摘要信息
+            const summary = data.summary;
+            const summaryHtml = `
+                <div class="alert alert-info">
+                    <p class="mb-1"><strong>数据摘要:</strong> 共存储了 ${summary.stock_count} 只s的 ${summary.total_records} 条价格记录</p>
+                    <p class="mb-0">数据时间范围: ${formatDate(summary.earliest_date)} 至 ${formatDate(summary.latest_date)}</p>
+                </div>
+            `;
+            document.getElementById('storedDataSummary').innerHTML = summaryHtml;
+            
+            // 显示s数据
+            if (data.stocks.length === 0) {
+                document.getElementById('storedDataTableBody').innerHTML = `<tr><td colspan="9" class="text-center">暂无数据</td></tr>`;
+                return;
+            }
+            
+            let tableHtml = '';
+            data.stocks.forEach(stock => {
+                const latestData = stock.latest_data;
+                
+                // 获取涨跌幅并设置样式
+                let changePercent = '-';
+                let changeClass = '';
+                
+                if (latestData.change_percent !== null) {
+                    changePercent = latestData.change_percent.toFixed(2) + '%';
+                    changeClass = latestData.change_percent > 0 ? 'text-success' : 
+                                  latestData.change_percent < 0 ? 'text-danger' : '';
+                    changePercent = latestData.change_percent > 0 ? '+' + changePercent : changePercent;
+                }
+                
+                tableHtml += `
+                    <tr>
+                        <td>${stock.code}</td>
+                        <td>${formatDate(latestData.time)}</td>
+                        <td>${latestData.close !== null ? latestData.close.toFixed(2) : '-'}</td>
+                        <td class="${changeClass}">${changePercent}</td>
+                        <td>${latestData.high !== null ? latestData.high.toFixed(2) : '-'}</td>
+                        <td>${latestData.low !== null ? latestData.low.toFixed(2) : '-'}</td>
+                        <td>${latestData.volume !== null ? latestData.volume.toLocaleString() : '-'}</td>
+                        <td>${stock.stats.record_count}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary view-stock" data-code="${stock.code}">图表</button>
+                            <button class="btn btn-sm btn-info view-detail" data-code="${stock.code}">详情</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            document.getElementById('storedDataTableBody').innerHTML = tableHtml;
+            
+            // 为"图表"按钮添加点击事件
+            document.querySelectorAll('.view-stock').forEach(button => {
+                button.addEventListener('click', () => {
+                    const stockCode = button.getAttribute('data-code');
+                    // 设置下拉框选中该s
+                    document.getElementById('stockCode').value = stockCode;
+                    // 触发查询
+                    document.getElementById('queryData').click();
+                    // 滚动到图表位置
+                    document.querySelector('.card:has(#stockChart)').scrollIntoView({ behavior: 'smooth' });
+                });
+            });
+            
+            // 为"详情"按钮添加点击事件
+            document.querySelectorAll('.view-detail').forEach(button => {
+                button.addEventListener('click', () => {
+                    const stockCode = button.getAttribute('data-code');
+                    openStockDetailModal(stockCode);
+                });
+            });
+        }
+        
+        // 格式化日期显示
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleDateString();
+        }
+        
+        // 刷新存储的s数据
+        document.getElementById('refreshStoredData').addEventListener('click', async () => {
+            document.getElementById('storedDataSummary').innerHTML = '<p>刷新中...</p>';
+            document.getElementById('storedDataTableBody').innerHTML = '<tr><td colspan="9" class="text-center">刷新中...</td></tr>';
+            await loadStoredStocksData();
+        });
+        
+        // 打开s详细数据模态框
+        let detailStockChart = null;
+        async function openStockDetailModal(stockCode) {
+            // 显示模态框
+            const modal = new bootstrap.Modal(document.getElementById('stockDetailModal'));
+            modal.show();
+            
+            // 更新标题
+            document.getElementById('stockDetailModalLabel').textContent = `s详细数据 - ${stockCode}`;
+            
+            // 初始化内容
+            document.getElementById('stockDetailInfo').innerHTML = '<p>加载中...</p>';
+            document.getElementById('stockDetailTableBody').innerHTML = '<tr><td colspan="8" class="text-center">加载中...</td></tr>';
+            
+            // 销毁之前的图表
+            if (detailStockChart) {
+                detailStockChart.destroy();
+                detailStockChart = null;
+            }
+            
+            try {
+                // 获取数据
+                const response = await fetch(`${API_BASE_URL}/stock_all_data?code=${stockCode}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayStockDetailData(result);
+                } else {
+                    document.getElementById('stockDetailInfo').innerHTML = `<p class="text-danger">获取数据失败: ${result.message}</p>`;
+                    document.getElementById('stockDetailTableBody').innerHTML = `<tr><td colspan="8" class="text-center text-danger">获取数据失败</td></tr>`;
+                }
+            } catch (error) {
+                console.error('获取s详细数据出错:', error);
+                document.getElementById('stockDetailInfo').innerHTML = `<p class="text-danger">获取数据出错: ${error.message}</p>`;
+                document.getElementById('stockDetailTableBody').innerHTML = `<tr><td colspan="8" class="text-center text-danger">获取数据出错</td></tr>`;
+            }
+        }
+        
+        // 显示s详细数据
+        function displayStockDetailData(result) {
+            const { code, data, info } = result;
+            
+            // 显示s信息
+            let infoHtml = `<div class="alert alert-info">`;
+            infoHtml += `<h6>s代码: ${code}</h6>`;
+            
+            if (info) {
+                infoHtml += `<p class="mb-1">s名称: ${info.name || '-'}</p>`;
+                infoHtml += `<p class="mb-1">每手股数: ${info.lot_size || '-'}</p>`;
+                infoHtml += `<p class="mb-1">s类型: ${info.stock_type || '-'} / ${info.stock_child_type || '-'}</p>`;
+                infoHtml += `<p class="mb-0">上市日期: ${info.listing_date ? formatDate(info.listing_date) : '-'}</p>`;
+            } else {
+                infoHtml += `<p class="mb-0">没有可用的s基本信息</p>`;
+            }
+            
+            infoHtml += `</div>`;
+            document.getElementById('stockDetailInfo').innerHTML = infoHtml;
+            
+            // 绘制图表
+            const chartData = {
+                labels: data.map(item => formatDate(item.time)),
+                datasets: [
+                    {
+                        label: `${code} 收盘价`,
+                        data: data.map(item => item.close),
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    }
+                ]
+            };
+            
+            const ctx = document.getElementById('detailStockChart').getContext('2d');
+            detailStockChart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `${code} 历史价格走势`
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: '日期'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: '价格'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 显示表格数据
+            if (data.length === 0) {
+                document.getElementById('stockDetailTableBody').innerHTML = `<tr><td colspan="8" class="text-center">暂无数据</td></tr>`;
+                return;
+            }
+            
+            // 为计算涨跌幅，先按日期排序
+            const sortedData = [...data].sort((a, b) => new Date(a.time) - new Date(b.time));
+            
+            let tableHtml = '';
+            sortedData.forEach((item, index) => {
+                // 计算涨跌幅
+                let changePercent = '-';
+                let changeClass = '';
+                
+                if (index > 0 && item.close !== null && sortedData[index-1].close !== null) {
+                    const prevClose = sortedData[index-1].close;
+                    const change = item.close - prevClose;
+                    const percent = (change / prevClose) * 100;
+                    
+                    changePercent = percent.toFixed(2) + '%';
+                    changeClass = percent > 0 ? 'text-success' : percent < 0 ? 'text-danger' : '';
+                    changePercent = percent > 0 ? '+' + changePercent : changePercent;
+                }
+                
+                tableHtml += `
+                    <tr>
+                        <td>${formatDate(item.time)}</td>
+                        <td>${item.open !== null ? item.open.toFixed(2) : '-'}</td>
+                        <td>${item.close !== null ? item.close.toFixed(2) : '-'}</td>
+                        <td>${item.high !== null ? item.high.toFixed(2) : '-'}</td>
+                        <td>${item.low !== null ? item.low.toFixed(2) : '-'}</td>
+                        <td>${item.volume !== null ? item.volume.toLocaleString() : '-'}</td>
+                        <td>${item.turnover !== null ? item.turnover.toLocaleString() : '-'}</td>
+                        <td class="${changeClass}">${changePercent}</td>
+                    </tr>
+                `;
+            });
+            
+            document.getElementById('stockDetailTableBody').innerHTML = tableHtml;
+        }
+
+        // 计算简单移动平均线
+        function calculateSMA(data, period) {
+            if (data.length < period) {
+                return 0;
+            }
+            
+            const slice = data.slice(data.length - period);
+            const sum = slice.reduce((a, b) => a + b, 0);
+            return sum / period;
+        }
+    </script>
+</body>
+</html>
