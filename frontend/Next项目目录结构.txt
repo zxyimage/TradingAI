@@ -1,0 +1,61 @@
+frontend/
+├── public/
+│   ├── favicon.ico
+│   └── logo.svg
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx               # 主布局
+│   │   ├── page.tsx                 # 仪表盘页面
+│   │   ├── providers.tsx 
+│   │   ├── recommendations/
+│   │   │   └── page.tsx             # 实时推荐页面
+│   │   ├── management/
+│   │   │   └── page.tsx             # 股票管理页面
+│   │   ├── analysis/
+│   │   │   ├── [stockCode]/
+│   │   │   │   └── page.tsx         # 股票详细分析页面
+│   │   │   └── page.tsx             # 分析页面入口
+│   │   └── database/
+│   │       └── page.tsx             # 数据库视图页面
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── AppNavigation.tsx    # 导航组件
+│   │   │   ├── MobileNav.tsx        # 移动端导航
+│   │   │   └── Header.tsx           # 头部组件
+│   │   ├── ui/                      # UI组件 (shadcn/ui)
+│   │   │   ├── alert.tsx        
+│   │   │   ├── button.tsx       
+│   │   │   ├── card.tsx
+│   │   │   ├── label.tsx
+│   │   │   ├── select.tsx
+│   │   │   ├── table.tsx
+│   │   │   ├── tabs.tsx
+│   │   │   └── textarea.tsx
+│   │   ├── charts/
+│   │   │   ├── StockPriceChart.tsx  # 股票价格图表VolumeChart.tsx
+│   │   │   ├── VolumeChart.tsx
+│   │   │   └── MovingAverageChart.tsx # 均线图表
+│   │   ├── stocks/
+│   │   │   ├── StockCard.tsx        # 股票卡片组件
+│   │   │   ├── StockTable.tsx       # 股票表格组件
+│   │   │   ├── AnalysisResult.tsx   # 分析结果组件
+│   │   │   └── RecommendationCard.tsx # 推荐卡片
+│   │   └── forms/
+│   │   │   ├── DaySelector.tsx 
+│   │   │   ├── StockSelector.tsx
+│   │       └── StockListForm.tsx    # 股票列表管理表单
+│   ├── lib/
+│   │   ├── api.ts                   # API请求函数
+│   │   ├── utils.ts                 # 实用工具函数
+│   │   └── types.ts                 # TypeScript类型定义
+│   ├── hooks/
+│   │   ├── useStocks.ts             # 股票数据hook
+│   │   ├── useAnalysis.ts           # 分析数据hook
+│   │   └── useRecommendations.ts    # 推荐数据hook
+│   └── styles/
+│       └── globals.css              # 全局样式
+├── .env.local                       # 环境变量
+├── tailwind.config.js               # Tailwind配置
+├── tsconfig.json                    # TypeScript配置
+├── package.json                     # 项目依赖
+└── README.md                        # 项目文档

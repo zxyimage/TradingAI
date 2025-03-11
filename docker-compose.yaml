@@ -55,6 +55,22 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: stock_frontend
+    depends_on:
+      - stock-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
+      - NEXT_PUBLIC_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
+    restart: unless-stopped
+    networks:
+      - stock-network
+
 networks:
   stock-network:
     driver: bridge
