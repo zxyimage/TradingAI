@@ -52,7 +52,7 @@ services:
       - FUTU_PORT=${FUTU_PORT:-11111}
       # 显式添加API密钥和CORS设置
       - TRADING_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
-      - ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://localhost:3000,http://frontend:3000
+      - ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://localhost:3001,http://frontend:3001
     volumes:
       - ./backend:/app
     networks:
@@ -69,7 +69,7 @@ services:
     depends_on:
       - stock-backend
     ports:
-      - "3000:3000"
+      - "3001:3000"
     # 添加环境变量文件
     env_file:
       - ./.env
