@@ -1,17 +1,39 @@
 import time
 from datetime import datetime, timedelta
 import pandas as pd
+import numpy as np
 from sqlalchemy import create_engine, text
 from futu import *
 from apscheduler.schedulers.blocking import BlockingScheduler
 from config import DB_CONFIG, FUTU_CONFIG, STOCKS_TO_TRACK
+import redis
+import json
+import threading
+import traceback
+# 在 stock_data_fetcher.py 文件顶部的导入部分，添加:
+from config import DB_CONFIG, FUTU_CONFIG, STOCKS_TO_TRACK, REDIS_CONFIG
+# 在 stock_ai_analyzer.py 文件顶部的导入部分，添加:
+from config import REDIS_CONFIG
+
+# 创建Redis连接
+try:
+    redis_client = redis.Redis(
+        host=REDIS_CONFIG["host"], 
+        port=REDIS_CONFIG["port"], 
+        db=REDIS_CONFIG["db"], 
+        decode_responses=REDIS_CONFIG["decode_responses"]
+    )
+    print(f"成功连接到Redis: {REDIS_CONFIG['host']}:{REDIS_CONFIG['port']}")
+except Exception as e:
+    print(f"Redis连接错误: {e}")
+    redis_client = None
 
 # 创建数据库连接
 def get_db_engine():
     conn_str = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
     return create_engine(conn_str)
 
-# 初始化数据库模式
+# 初始化数据库模式 (保持原有函数不变)
 def init_database(engine):
     with engine.connect() as conn:
         # 启用TimescaleDB扩展
@@ -24,8 +46,8 @@ def init_database(engine):
             code VARCHAR(20) NOT NULL,
             name VARCHAR(100),
             lot_size INTEGER,
-            stock_type VARCHAR(50),             -- 改为VARCHAR
-            stock_child_type VARCHAR(50),       -- 改为VARCHAR
+            stock_type VARCHAR(50),
+            stock_child_type VARCHAR(50),
             stock_owner VARCHAR(20),
             listing_date TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -57,28 +79,301 @@ def init_database(engine):
         
         conn.commit()
 
-# 连接到Futu OpenAPI
-def connect_futu_api():
+# 实时行情处理类
+class StockQuoteHandler(StockQuoteHandlerBase):
+    def __init__(self):
+        super().__init__()
+        
+    def on_recv_rsp(self, rsp_pb):
+        """
+        实时报价回调处理
+        """
+        ret_code, data = super().on_recv_rsp(rsp_pb)
+        if ret_code != RET_OK:
+            print(f"StockQuoteHandler: 接收数据失败 - {data}")
+            return RET_ERROR, data
+            
+        for index, row in data.iterrows():
+            stock_code = row['code']
+            last_price = row['last_price']
+            
+            # 存储实时价格到Redis
+            if redis_client:
+                try:
+                    # 存储最新价格
+                    redis_client.hset(f"stock:realtime:{stock_code}", "price", last_price)
+                    redis_client.hset(f"stock:realtime:{stock_code}", "time", datetime.now().isoformat())
+                    
+                    # 获取历史数据计算均线
+                    calculate_and_store_moving_averages(stock_code)
+                    
+                    # 记录日志
+                    print(f"已更新 {stock_code} 实时价格: {last_price}")
+                except Exception as e:
+                    print(f"存储实时数据时出错: {e}")
+        
+        return RET_OK, data
+
+# K线处理类
+class KLineHandler(CurKlineHandlerBase):
+    def __init__(self):
+        super().__init__()
+    
+    def on_recv_rsp(self, rsp_pb):
+        """
+        实时K线回调处理
+        """
+        ret_code, data = super().on_recv_rsp(rsp_pb)
+        if ret_code != RET_OK:
+            print(f"KLineHandler: 接收K线数据失败 - {data}")
+            return RET_ERROR, data
+            
+        if data is not None and not data.empty:
+            for index, row in data.iterrows():
+                stock_code = row['code']
+                close_price = row['close']
+                k_time = row['time_key']
+                
+                # 存储K线数据到Redis
+                if redis_client:
+                    try:
+                        # 将当前K线数据存入Redis
+                        kline_data = {
+                            'code': stock_code,
+                            'time': k_time,
+                            'open': float(row['open']),
+                            'close': float(close_price),
+                            'high': float(row['high']),
+                            'low': float(row['low']),
+                            'volume': int(row['volume']),
+                            'turnover': float(row['turnover'])
+                        }
+                        
+                        # 将K线数据保存为列表
+                        redis_client.rpush(f"stock:kline:{stock_code}", json.dumps(kline_data))
+                        # 保留最近100条K线数据
+                        redis_client.ltrim(f"stock:kline:{stock_code}", -100, -1)
+                        
+                        print(f"已更新 {stock_code} K线数据, 时间: {k_time}, 收盘价: {close_price}")
+                    except Exception as e:
+                        print(f"存储K线数据时出错: {e}")
+                        traceback.print_exc()
+                
+                # 尝试保存到数据库（如果是完整的日K）
+                engine = get_db_engine()
+                try:
+                    # 将时间字符串转换为日期
+                    k_date = datetime.strptime(k_time, "%Y-%m-%d %H:%M:%S")
+                    
+                    # 如果是日K的最后一条记录(下午收盘时间附近)，保存到数据库
+                    now = datetime.now()
+                    if k_date.hour >= 15 and k_date.minute >= 0:
+                        # 创建DataFrame并存储
+                        df = pd.DataFrame([{
+                            'time_key': k_time,
+                            'open': row['open'],
+                            'close': close_price,
+                            'high': row['high'],
+                            'low': row['low'],
+                            'volume': row['volume'],
+                            'turnover': row['turnover']
+                        }])
+                        store_stock_prices(engine, df, stock_code)
+                except Exception as e:
+                    print(f"保存完整K线数据到数据库时出错: {e}")
+        
+        return RET_OK, data
+
+# 计算并存储移动平均线
+def calculate_and_store_moving_averages(stock_code):
     """
-    通过FutuOpenD连接到Futu OpenAPI。
-    确保在调用此函数前FutuOpenD已运行并可访问。
+    计算股票的各种移动平均线并存储到Redis
+    """
+    if not redis_client:
+        return
+        
+    try:
+        # 从数据库获取历史数据
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            # 获取过去60天的数据用于计算均线
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=60)
+            
+            query = text("""
+            SELECT time, close
+            FROM stock_price
+            WHERE code = :code AND time BETWEEN :start_date AND :end_date
+            ORDER BY time
+            """)
+            
+            result = conn.execute(query, {"code": stock_code, 
+                                        "start_date": start_date, 
+                                        "end_date": end_date})
+            
+            # 转换为DataFrame
+            data = []
+            for row in result:
+                data.append({
+                    'time': row.time.isoformat(),
+                    'close': float(row.close) if row.close else None
+                })
+            
+            if not data:
+                print(f"没有找到 {stock_code} 的历史数据")
+                return
+                
+            df = pd.DataFrame(data)
+            
+            # 确保close数据为数值类型
+            df['close'] = pd.to_numeric(df['close'], errors='coerce')
+            
+            # 计算移动平均线
+            df['MA5'] = df['close'].rolling(window=5).mean()
+            df['MA10'] = df['close'].rolling(window=10).mean()
+            df['MA20'] = df['close'].rolling(window=20).mean()
+            df['MA30'] = df['close'].rolling(window=30).mean()
+            df['MA60'] = df['close'].rolling(window=60).mean()
+            
+            # 获取最新的移动平均线值
+            latest = df.iloc[-1]
+            
+            # 存储到Redis
+            ma_data = {
+                'MA5': float(latest['MA5']) if not np.isnan(latest['MA5']) else None,
+                'MA10': float(latest['MA10']) if not np.isnan(latest['MA10']) else None,
+                'MA20': float(latest['MA20']) if not np.isnan(latest['MA20']) else None,
+                'MA30': float(latest['MA30']) if not np.isnan(latest['MA30']) else None,
+                'MA60': float(latest['MA60']) if not np.isnan(latest['MA60']) else None,
+                'updated_at': datetime.now().isoformat()
+            }
+            
+            # 将均线数据保存到Redis
+            redis_client.hmset(f"stock:ma:{stock_code}", {k: str(v) if v is not None else "null" for k, v in ma_data.items()})
+            
+            # 获取实时价格
+            current_price = redis_client.hget(f"stock:realtime:{stock_code}", "price")
+            if current_price:
+                current_price = float(current_price)
+                
+                # 计算推荐级别
+                recommendation_level = calculate_recommendation_level(current_price, ma_data)
+                
+                # 存储推荐级别
+                redis_client.hset(f"stock:realtime:{stock_code}", "recommendation_level", recommendation_level)
+                
+                print(f"{stock_code} 均线计算完成，当前价格: {current_price}，推荐级别: {recommendation_level}")
+                
+    except Exception as e:
+        print(f"计算 {stock_code} 均线时出错: {e}")
+        traceback.print_exc()
+
+# 计算推荐级别
+def calculate_recommendation_level(current_price, ma_data):
+    """
+    根据当前价格与均线的关系计算推荐级别
+    
+    返回值:
+    1 - 最优先推荐（价格低于MA60）
+    2 - 次优先推荐（价格低于MA30）
+    3 - 第三推荐（价格低于MA20）
+    4 - 第四推荐（价格低于MA10）
+    5 - 第五推荐（价格低于MA5）
+    6 - 不推荐（价格高于所有均线）
+    """
+    try:
+        ma60 = ma_data.get('MA60')
+        ma30 = ma_data.get('MA30')
+        ma20 = ma_data.get('MA20')
+        ma10 = ma_data.get('MA10')
+        ma5 = ma_data.get('MA5')
+        
+        # 检查均线值是否有效
+        if ma60 is not None and ma60 != "null" and float(ma60) > 0 and current_price < float(ma60):
+            return 1
+        elif ma30 is not None and ma30 != "null" and float(ma30) > 0 and current_price < float(ma30):
+            return 2
+        elif ma20 is not None and ma20 != "null" and float(ma20) > 0 and current_price < float(ma20):
+            return 3
+        elif ma10 is not None and ma10 != "null" and float(ma10) > 0 and current_price < float(ma10):
+            return 4
+        elif ma5 is not None and ma5 != "null" and float(ma5) > 0 and current_price < float(ma5):
+            return 5
+        else:
+            return 6
+    except Exception as e:
+        print(f"计算推荐级别时出错: {e}")
+        return 6  # 默认不推荐
+
+# 将股票价格数据存储到数据库 (保持原有函数不变)
+def store_stock_prices(engine, price_df, code):
+    # 重命名列以匹配我们的数据库模式
+    columns_map = {
+        'time_key': 'time',
+        'open': 'open',
+        'close': 'close',
+        'high': 'high',
+        'low': 'low',
+        'volume': 'volume',
+        'turnover': 'turnover'
+    }
+    
+    # 选择并重命名列
+    df = price_df[list(columns_map.keys())].rename(columns=columns_map)
+    df['code'] = code
+    
+    # 存储数据到数据库
+    df.to_sql('stock_price', engine, if_exists='append', index=False, method='multi')
+    print(f"已存储 {len(df)} 条 {code} 的价格记录")
+
+# 连接到Futu OpenAPI 并订阅实时数据
+def subscribe_realtime_data():
+    """
+    订阅实时股票数据
     """
     try:
         quote_ctx = OpenQuoteContext(host=FUTU_CONFIG["host"], port=FUTU_CONFIG["port"])
-        # 测试连接
-        ret, data = quote_ctx.get_global_state()
-        if ret != RET_OK:
-            print(f"获取全局状态失败: {data}")
-            raise ConnectionError(f"无法连接到FutuOpenD: {data}")
         
-        print("已成功连接到FutuOpenD行情服务")
-        return quote_ctx
+        # 设置回调处理
+        quote_handler = StockQuoteHandler()
+        quote_ctx.set_handler(quote_handler)
+        
+        kline_handler = KLineHandler()
+        quote_ctx.set_handler(kline_handler)
+        
+        # 订阅实时报价
+        print(f"正在订阅股票实时报价: {STOCKS_TO_TRACK}")
+        ret, data = quote_ctx.subscribe(STOCKS_TO_TRACK, [SubType.QUOTE], is_first_push=True)
+        if ret != RET_OK:
+            print(f"订阅实时报价失败: {data}")
+        else:
+            print(f"已成功订阅 {len(STOCKS_TO_TRACK)} 支股票的实时报价")
+            
+        # 订阅日K线
+        ret, data = quote_ctx.subscribe(STOCKS_TO_TRACK, [SubType.K_DAY], is_first_push=True)
+        if ret != RET_OK:
+            print(f"订阅日K线失败: {data}")
+        else:
+            print(f"已成功订阅 {len(STOCKS_TO_TRACK)} 支股票的日K线")
+            
+        # 初始计算所有股票的均线
+        for stock_code in STOCKS_TO_TRACK:
+            calculate_and_store_moving_averages(stock_code)
+            
+        # 保持连接
+        print("实时数据订阅成功，保持连接...")
+        while True:
+            time.sleep(60)  # 每分钟检查一次
+            
     except Exception as e:
-        print(f"连接到FutuOpenD时出错: {e}")
-        print("请确保FutuOpenD正在运行并且可以访问。")
-        raise
+        print(f"实时数据订阅出错: {e}")
+        traceback.print_exc()
+    finally:
+        if 'quote_ctx' in locals():
+            quote_ctx.close()
+            print("已关闭Futu API连接")
 
-# 获取股票基本信息
+# 获取股票基本信息 (保持原有函数不变)
 def get_stock_info(quote_ctx, market):
     try:
         ret, data = quote_ctx.get_stock_basicinfo(market, SecurityType.STOCK)
@@ -105,7 +400,7 @@ def get_stock_info(quote_ctx, market):
         print(f"获取 {market} 市场股票信息时发生异常: {e}")
         return None
 
-# 获取历史K线数据
+# 获取历史K线数据 (保持原有函数不变)
 def get_kline_data(quote_ctx, code, start_date, end_date, ktype=KLType.K_DAY):
     try:
         # 查阅文档修正API调用
@@ -129,7 +424,7 @@ def get_kline_data(quote_ctx, code, start_date, end_date, ktype=KLType.K_DAY):
         print("详细traceback:", traceback.format_exc())
         return None
 
-# 将股票信息存储到数据库
+# 将股票信息存储到数据库 (保持原有函数不变)
 def store_stock_info(engine, stock_info_df):
     if stock_info_df is None or stock_info_df.empty:
         print("警告: 没有股票信息可存储")
@@ -164,27 +459,6 @@ def store_stock_info(engine, stock_info_df):
     df.to_sql('stock_info', engine, if_exists='append', index=False)
     print(f"已存储 {len(df)} 条股票信息记录")
 
-# 将股票价格数据存储到数据库
-def store_stock_prices(engine, price_df, code):
-    # 重命名列以匹配我们的数据库模式
-    columns_map = {
-        'time_key': 'time',
-        'open': 'open',
-        'close': 'close',
-        'high': 'high',
-        'low': 'low',
-        'volume': 'volume',
-        'turnover': 'turnover'
-    }
-    
-    # 选择并重命名列
-    df = price_df[list(columns_map.keys())].rename(columns=columns_map)
-    df['code'] = code
-    
-    # 存储数据到数据库
-    df.to_sql('stock_price', engine, if_exists='append', index=False, method='multi')
-    print(f"已存储 {len(df)} 条 {code} 的价格记录")
-
 # 更新股票数据（定时执行）
 def update_stock_data():
     print(f"开始更新股票数据，时间: {datetime.now()}")
@@ -218,7 +492,28 @@ def update_stock_data():
         
     print(f"股票数据更新完成，时间: {datetime.now()}")
 
-# 初始化函数 - 系统启动时运行一次
+# 连接到Futu OpenAPI
+def connect_futu_api():
+    """
+    通过FutuOpenD连接到Futu OpenAPI。
+    确保在调用此函数前FutuOpenD已运行并可访问。
+    """
+    try:
+        quote_ctx = OpenQuoteContext(host=FUTU_CONFIG["host"], port=FUTU_CONFIG["port"])
+        # 测试连接
+        ret, data = quote_ctx.get_global_state()
+        if ret != RET_OK:
+            print(f"获取全局状态失败: {data}")
+            raise ConnectionError(f"无法连接到FutuOpenD: {data}")
+        
+        print("已成功连接到FutuOpenD行情服务")
+        return quote_ctx
+    except Exception as e:
+        print(f"连接到FutuOpenD时出错: {e}")
+        print("请确保FutuOpenD正在运行并且可以访问。")
+        raise
+
+# 初始化函数 - 系统启动时运行一次 (保持原有函数不变，但启动实时订阅)
 def initialize():
     print("初始化股票数据系统...")
     
@@ -258,9 +553,9 @@ def initialize():
             # 初始数据加载
             print("获取初始历史数据...")
             
-            # 获取过去30天的数据
+            # 获取过去60天的数据（增加到60天用于计算所有均线）
             end_date = datetime.now().strftime("%Y-%m-%d")
-            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
             
             for stock_code in STOCKS_TO_TRACK:
                 try:
@@ -276,6 +571,12 @@ def initialize():
         finally:
             # 关闭Futu连接
             quote_ctx.close()
+            
+        # 启动实时数据订阅线程
+        realtime_thread = threading.Thread(target=subscribe_realtime_data)
+        realtime_thread.daemon = True
+        realtime_thread.start()
+        print("已启动实时数据订阅")
             
     except Exception as e:
         print(f"初始化过程中出错: {e}")

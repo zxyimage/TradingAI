@@ -15,6 +15,14 @@ DB_CONFIG = {
     "database": os.getenv("DB_NAME", "stockdb")
 }
 
+# Redis配置
+REDIS_CONFIG = {
+    "host": os.getenv("REDIS_HOST", "localhost"),
+    "port": int(os.getenv("REDIS_PORT", "6379")),
+    "db": 0,
+    "decode_responses": True
+}
+
 # Futu API配置
 FUTU_CONFIG = {
     "host": os.getenv("FUTU_HOST", "127.0.0.1"),

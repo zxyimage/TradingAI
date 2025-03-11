@@ -12,6 +12,38 @@
         .stock-card {
             margin-bottom: 20px;
         }
+        .recommendation-1 {
+            background-color: #d4edda;
+            border-left: 5px solid #28a745;
+        }
+        .recommendation-2 {
+            background-color: #e8f4d9;
+            border-left: 5px solid #5cb85c;
+        }
+        .recommendation-3 {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffc107;
+        }
+        .recommendation-4 {
+            background-color: #f8f9fa;
+            border-left: 5px solid #6c757d;
+        }
+        .recommendation-5 {
+            background-color: #f8f9fa;
+            border-left: 5px solid #adb5bd;
+        }
+        .recommendation-6 {
+            background-color: #f8d7da;
+            border-left: 5px solid #dc3545;
+        }
+        .ma-relation {
+            display: inline-block;
+            margin-right: 8px;
+            font-size: 0.85rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background-color: #e9ecef;
+        }
     </style>
 </head>
 <body>
@@ -64,6 +96,24 @@
                             </select>
                         </div>
                         <button id="queryData" class="btn btn-success">查询数据</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 实时推荐s't列表 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>实时推荐st</h5>
+                        <button id="refreshRankedStocks" class="btn btn-outline-primary btn-sm">刷新数据</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="rankedStocksInfo" class="mb-3">
+                            <p>加载中...</p>
+                        </div>
+                        <div id="rankedStocksList" class="row"></div>
                     </div>
                 </div>
             </div>
@@ -183,6 +233,26 @@
         </div>
     </div>
 
+    <!-- 实时分析模态框 -->
+    <div class="modal fade" id="realtimeAnalysisModal" tabindex="-1" aria-labelledby="realtimeAnalysisModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="realtimeAnalysisModalLabel">实时分析</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="realtimeAnalysisContent">
+                        <p>加载中...</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
@@ -194,6 +264,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await loadStocksList();
             await loadStoredStocksData();
+            await loadRankedStocks();
         });
 
         // 加载s列表
@@ -274,6 +345,258 @@
             }
         });
 
+        // 加载实时推荐排名的st
+        async function loadRankedStocks() {
+            try {
+                document.getElementById('rankedStocksInfo').innerHTML = '<p>正在加载实时推荐st...</p>';
+                document.getElementById('rankedStocksList').innerHTML = '';
+                
+                const response = await fetch(`${API_BASE_URL}/ranked_stocks`);
+                const result = await response.json();
+                
+                if (result.success && result.stocks) {
+                    displayRankedStocks(result.stocks, result.updated_at);
+                } else {
+                    document.getElementById('rankedStocksInfo').innerHTML = 
+                        `<div class="alert alert-warning">获取实时推荐st失败: ${result.message || '未知错误'}</div>`;
+                }
+            } catch (error) {
+                console.error('加载实时推荐st出错:', error);
+                document.getElementById('rankedStocksInfo').innerHTML = 
+                    `<div class="alert alert-danger">加载实时推荐出错: ${error.message}</div>`;
+            }
+        }
+
+        // 刷新实时排名
+        document.getElementById('refreshRankedStocks').addEventListener('click', loadRankedStocks);
+
+        // 显示排名st列表
+        function displayRankedStocks(stocks, updatedAt) {
+            // 更新信息区域
+            const formattedTime = new Date(updatedAt).toLocaleString();
+            document.getElementById('rankedStocksInfo').innerHTML = 
+                `<div class="alert alert-info">共 ${stocks.length} 支st，更新时间: ${formattedTime}</div>`;
+            
+            // 生成卡片
+            let cardsHtml = '';
+            
+            stocks.forEach(stock => {
+                // 创建均线关系标签
+                let relationsHtml = '';
+                if (stock.ma_relations && stock.ma_relations.length > 0) {
+                    stock.ma_relations.forEach(relation => {
+                        relationsHtml += `<span class="ma-relation">${relation}</span>`;
+                    });
+                }
+                
+                // 根据推荐级别设置样式类
+                const levelClass = `recommendation-${stock.recommendation_level}`;
+                const actionClass = getActionColorClass(stock.recommendation_text);
+                
+                cardsHtml += `
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100 ${levelClass}">
+                            <div class="card-body">
+                                <h5 class="card-title">${stock.code}</h5>
+                                <h6 class="card-subtitle mb-2 text-muted">价格: ${stock.price.toFixed(2)}</h6>
+                                <p class="card-text ${actionClass} fw-bold">推荐: ${stock.recommendation_text}</p>
+                                <div class="mb-2">
+                                    ${relationsHtml}
+                                </div>
+                                <p class="card-text text-muted small">${stock.closest_ma || ''}</p>
+                                <div class="d-flex justify-content-between mt-2">
+                                    <button class="btn btn-sm btn-outline-primary view-realtime" data-code="${stock.code}">
+                                        查看分析
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-success view-chart" data-code="${stock.code}">
+                                        查看图表
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            document.getElementById('rankedStocksList').innerHTML = cardsHtml;
+            
+            // 添加事件监听器
+            document.querySelectorAll('.view-realtime').forEach(button => {
+                button.addEventListener('click', () => {
+                    const stockCode = button.getAttribute('data-code');
+                    openRealtimeAnalysisModal(stockCode);
+                });
+            });
+            
+            document.querySelectorAll('.view-chart').forEach(button => {
+                button.addEventListener('click', () => {
+                    const stockCode = button.getAttribute('data-code');
+                    // 设置下拉框选中该s
+                    document.getElementById('stockCode').value = stockCode;
+                    // 触发查询
+                    document.getElementById('queryData').click();
+                    // 滚动到图表位置
+                    document.querySelector('.card:has(#stockChart)').scrollIntoView({ behavior: 'smooth' });
+                });
+            });
+        }
+
+        // 打开实时分析模态框
+        async function openRealtimeAnalysisModal(stockCode) {
+            // 显示模态框
+            const modal = new bootstrap.Modal(document.getElementById('realtimeAnalysisModal'));
+            modal.show();
+            
+            // 更新标题
+            document.getElementById('realtimeAnalysisModalLabel').textContent = `实时分析 - ${stockCode}`;
+            
+            // 加载中状态
+            document.getElementById('realtimeAnalysisContent').innerHTML = '<p class="text-center">加载中...</p>';
+            
+            try {
+                // 获取实时分析
+                const response = await fetch(`${API_BASE_URL}/realtime_analysis?code=${stockCode}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayRealtimeAnalysis(result.analysis, stockCode);
+                } else {
+                    document.getElementById('realtimeAnalysisContent').innerHTML = 
+                        `<div class="alert alert-warning">${result.message}</div>`;
+                }
+            } catch (error) {
+                console.error('获取实时分析出错:', error);
+                document.getElementById('realtimeAnalysisContent').innerHTML = 
+                    `<div class="alert alert-danger">获取分析出错: ${error.message}</div>`;
+            }
+        }
+
+        // 显示实时分析结果
+        function displayRealtimeAnalysis(data, stockCode) {
+            const { analysis, recommendations, timestamp } = data;
+            
+            // 根据建议动作设置样式
+            let actionClass = 'text-warning';
+            if (recommendations.action === 'BUY') {
+                actionClass = 'text-success';
+            } else if (recommendations.action === 'SELL') {
+                actionClass = 'text-danger';
+            }
+            
+            // 格式化建议理由列表
+            const reasonsList = recommendations.reasons.map(reason => `<li>${reason}</li>`).join('');
+            
+            // 格式化时间
+            const formattedTime = new Date(timestamp).toLocaleString();
+            
+            // 构建HTML
+            let analysisHtml = `
+                <div class="mb-3">
+                    <h6>s代码: ${stockCode}</h6>
+                    <p class="text-muted small">更新时间: ${formattedTime}</p>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>技术指标</h5>
+                        <table class="table table-sm">
+                            <tr>
+                                <td>最新价格</td>
+                                <td>${analysis.latest_price.toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <td>5日均线 (MA5)</td>
+                                <td>${analysis.ma5 ? analysis.ma5.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
+                                <td>10日均线 (MA10)</td>
+                                <td>${analysis.ma10 ? analysis.ma10.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
+                                <td>20日均线 (MA20)</td>
+                                <td>${analysis.ma20 ? analysis.ma20.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
+                                <td>30日均线 (MA30)</td>
+                                <td>${analysis.ma30 ? analysis.ma30.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
+                                <td>60日均线 (MA60)</td>
+                                <td>${analysis.ma60 ? analysis.ma60.toFixed(2) : '无数据'}</td>
+                            </tr>
+                        </table>
+                        
+                        <h6>均线差异</h6>
+                        <table class="table table-sm">
+                            ${analysis.ma5_diff !== undefined ? `
+                            <tr>
+                                <td>相对MA5</td>
+                                <td class="${analysis.ma5_diff >= 0 ? 'text-danger' : 'text-success'}">
+                                    ${analysis.ma5_diff >= 0 ? '+' : ''}${analysis.ma5_diff.toFixed(2)}%
+                                </td>
+                            </tr>` : ''}
+                            ${analysis.ma10_diff !== undefined ? `
+                            <tr>
+                                <td>相对MA10</td>
+                                <td class="${analysis.ma10_diff >= 0 ? 'text-danger' : 'text-success'}">
+                                    ${analysis.ma10_diff >= 0 ? '+' : ''}${analysis.ma10_diff.toFixed(2)}%
+                                </td>
+                            </tr>` : ''}
+                            ${analysis.ma20_diff !== undefined ? `
+                            <tr>
+                                <td>相对MA20</td>
+                                <td class="${analysis.ma20_diff >= 0 ? 'text-danger' : 'text-success'}">
+                                    ${analysis.ma20_diff >= 0 ? '+' : ''}${analysis.ma20_diff.toFixed(2)}%
+                                </td>
+                            </tr>` : ''}
+                            ${analysis.ma30_diff !== undefined ? `
+                            <tr>
+                                <td>相对MA30</td>
+                                <td class="${analysis.ma30_diff >= 0 ? 'text-danger' : 'text-success'}">
+                                    ${analysis.ma30_diff >= 0 ? '+' : ''}${analysis.ma30_diff.toFixed(2)}%
+                                </td>
+                            </tr>` : ''}
+                            ${analysis.ma60_diff !== undefined ? `
+                            <tr>
+                                <td>相对MA60</td>
+                                <td class="${analysis.ma60_diff >= 0 ? 'text-danger' : 'text-success'}">
+                                    ${analysis.ma60_diff >= 0 ? '+' : ''}${analysis.ma60_diff.toFixed(2)}%
+                                </td>
+                            </tr>` : ''}
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>交易建议</h5>
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="${actionClass} text-center fw-bold">建议：${getActionText(recommendations.action)}</h6>
+                                <p>置信度: <span class="fw-bold">${(recommendations.confidence * 100).toFixed(0)}%</span></p>
+                                <p>风险水平: <span class="fw-bold">${getRiskLevelText(recommendations.risk_level)}</span></p>
+                                <p>推荐级别: <span class="fw-bold">${getRecommendationLevelText(recommendations.recommendation_level)}</span></p>
+                                
+                                <h6>建议理由:</h6>
+                                <ul>${reasonsList}</ul>
+                                
+                                <div class="row mt-3">
+                                    <div class="col-6">
+                                        <p>支撑位: <span class="text-success fw-bold">${recommendations.support_level ? recommendations.support_level.toFixed(2) : '无数据'}</span></p>
+                                    </div>
+                                    <div class="col-6">
+                                        <p>阻力位: <span class="text-danger fw-bold">${recommendations.resistance_level ? recommendations.resistance_level.toFixed(2) : '无数据'}</span></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 免责声明 -->
+                <p class="text-muted mt-3"><small>免责声明：以上分析仅供参考，不构成投资建议。投资有风险，入市需谨慎。</small></p>
+            `;
+            
+            document.getElementById('realtimeAnalysisContent').innerHTML = analysisHtml;
+        }
+
         // 显示s图表
         function displayStockChart(data, stockCode) {
             const ctx = document.getElementById('stockChart').getContext('2d');
@@ -305,6 +628,40 @@
                     }
                 ]
             };
+            
+            // 添加移动平均线
+            // 计算5日均线
+            const ma5Data = calculateMovingAverage(data.map(item => item.close), 5);
+            chartData.datasets.push({
+                label: `5日均线 (MA5)`,
+                data: ma5Data,
+                borderColor: 'rgb(255, 159, 64)',
+                borderDash: [5, 5],
+                tension: 0.1,
+                fill: false
+            });
+            
+            // 计算10日均线
+            const ma10Data = calculateMovingAverage(data.map(item => item.close), 10);
+            chartData.datasets.push({
+                label: `10日均线 (MA10)`,
+                data: ma10Data,
+                borderColor: 'rgb(153, 102, 255)',
+                borderDash: [5, 5],
+                tension: 0.1,
+                fill: false
+            });
+            
+            // 计算20日均线
+            const ma20Data = calculateMovingAverage(data.map(item => item.close), 20);
+            chartData.datasets.push({
+                label: `20日均线 (MA20)`,
+                data: ma20Data,
+                borderColor: 'rgb(255, 205, 86)',
+                borderDash: [5, 5],
+                tension: 0.1,
+                fill: false
+            });
             
             // 销毁现有图表
             if (stockChart) {
@@ -407,6 +764,14 @@
                                 <td>${technicalAnalysis.sma20 ? technicalAnalysis.sma20.toFixed(2) : '无数据'}</td>
                             </tr>
                             <tr>
+                                <td>30日均价</td>
+                                <td>${technicalAnalysis.sma30 ? technicalAnalysis.sma30.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
+                                <td>60日均价</td>
+                                <td>${technicalAnalysis.sma60 ? technicalAnalysis.sma60.toFixed(2) : '无数据'}</td>
+                            </tr>
+                            <tr>
                                 <td>RSI(14)</td>
                                 <td>${technicalAnalysis.rsi ? technicalAnalysis.rsi.toFixed(2) : '无数据'}</td>
                             </tr>
@@ -457,6 +822,20 @@
             }
         }
         
+        // 根据推荐文本获取颜色类
+        function getActionColorClass(recommendationText) {
+            if (recommendationText.includes('强烈推荐') || recommendationText.includes('推荐')) {
+                return 'text-success';
+            } else if (recommendationText.includes('考虑买入')) {
+                return 'text-primary';
+            } else if (recommendationText.includes('关注')) {
+                return 'text-secondary';
+            } else if (recommendationText.includes('不推荐')) {
+                return 'text-danger';
+            }
+            return '';
+        }
+        
         // 获取风险水平文本
         function getRiskLevelText(level) {
             switch(level) {
@@ -464,6 +843,19 @@
                 case 'MEDIUM': return '中等风险';
                 case 'HIGH': return '高风险';
                 default: return level;
+            }
+        }
+        
+        // 获取推荐级别文本
+        function getRecommendationLevelText(level) {
+            switch(parseInt(level)) {
+                case 1: return '强烈推荐 (低于60日均线)';
+                case 2: return '推荐 (低于30日均线)';
+                case 3: return '考虑买入 (低于20日均线)';
+                case 4: return '关注 (低于10日均线)';
+                case 5: return '轻度关注 (低于5日均线)';
+                case 6: return '不推荐 (高于所有均线)';
+                default: return '未知';
             }
         }
         
@@ -634,16 +1026,65 @@
             document.getElementById('stockDetailInfo').innerHTML = infoHtml;
             
             // 绘制图表
+            const closePrices = data.map(item => item.close);
+            
+            // 计算移动平均线
+            const ma5Data = calculateMovingAverage(closePrices, 5);
+            const ma10Data = calculateMovingAverage(closePrices, 10);
+            const ma20Data = calculateMovingAverage(closePrices, 20);
+            const ma30Data = calculateMovingAverage(closePrices, 30);
+            const ma60Data = calculateMovingAverage(closePrices, 60);
+            
             const chartData = {
                 labels: data.map(item => formatDate(item.time)),
                 datasets: [
                     {
                         label: `${code} 收盘价`,
-                        data: data.map(item => item.close),
+                        data: closePrices,
                         borderColor: 'rgb(75, 192, 192)',
                         backgroundColor: 'rgba(75, 192, 192, 0.1)',
                         tension: 0.1,
                         fill: true
+                    },
+                    {
+                        label: `MA5`,
+                        data: ma5Data,
+                        borderColor: 'rgb(255, 159, 64)',
+                        borderDash: [5, 5],
+                        tension: 0.1,
+                        fill: false
+                    },
+                    {
+                        label: `MA10`,
+                        data: ma10Data,
+                        borderColor: 'rgb(153, 102, 255)',
+                        borderDash: [5, 5],
+                        tension: 0.1,
+                        fill: false
+                    },
+                    {
+                        label: `MA20`,
+                        data: ma20Data,
+                        borderColor: 'rgb(255, 205, 86)',
+                        borderDash: [5, 5],
+                        tension: 0.1,
+                        fill: false
+                    },
+                    {
+                        label: `MA30`,
+                        data: ma30Data,
+                        borderColor: 'rgb(54, 162, 235)',
+                        borderDash: [5, 5],
+                        tension: 0.1,
+                        fill: false
+                    },
+                    {
+                        label: `MA60`,
+                        data: ma60Data,
+                        borderColor: 'rgb(255, 99, 132)',
+                        borderDash: [5, 5],
+                        tension: 0.1,
+                        fill: false
                     }
                 ]
             };
@@ -721,15 +1162,25 @@
             document.getElementById('stockDetailTableBody').innerHTML = tableHtml;
         }
 
-        // 计算简单移动平均线
-        function calculateSMA(data, period) {
-            if (data.length < period) {
-                return 0;
+        // 计算移动平均线
+        function calculateMovingAverage(data, period) {
+            const result = [];
+            
+            // 填充前面的 null 值
+            for (let i = 0; i < period - 1; i++) {
+                result.push(null);
             }
             
-            const slice = data.slice(data.length - period);
-            const sum = slice.reduce((a, b) => a + b, 0);
-            return sum / period;
+            // 计算移动平均
+            for (let i = period - 1; i < data.length; i++) {
+                let sum = 0;
+                for (let j = 0; j < period; j++) {
+                    sum += data[i - j];
+                }
+                result.push(sum / period);
+            }
+            
+            return result;
         }
     </script>
 </body>

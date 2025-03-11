@@ -100,6 +100,17 @@ class StockAllDataResponse(BaseModel):
     data: Optional[List[Dict[str, Any]]] = None
     info: Optional[StockInfo] = None
 
+class StockRealtimeAnalysisResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    analysis: Optional[Dict[str, Any]] = None
+
+class RankedStocksResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    stocks: Optional[List[Dict[str, Any]]] = None
+    updated_at: Optional[str] = None
+
 # 创建数据库连接
 def get_db_engine() -> Engine:
     conn_str = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
@@ -407,6 +418,51 @@ async def get_stock_all_data(
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取股票历史数据时出错: {str(e)}")
+
+# 新API端点: 获取实时股票分析
+@app.get("/api/realtime_analysis", response_model=StockRealtimeAnalysisResponse, tags=["实时分析"])
+async def get_realtime_analysis(
+    code: str = Query(..., description="股票代码，例如 US.AAPL 或 HK.00700")
+):
+    """
+    获取指定股票的实时分析结果
+    
+    - **code**: 股票代码
+    """
+    try:
+        # 使用AI分析器生成实时分析结果
+        analysis_result = ai_analyzer.analyze_realtime_stock(code)
+        
+        if "error" in analysis_result:
+            return {"success": False, "message": analysis_result["error"]}
+        
+        return {
+            "success": True, 
+            "analysis": analysis_result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取实时股票分析时出错: {str(e)}")
+
+# 新API端点: 获取排序后的股票列表
+@app.get("/api/ranked_stocks", response_model=RankedStocksResponse, tags=["实时分析"])
+async def get_ranked_stocks():
+    """
+    获取根据均线策略排序的股票列表
+    """
+    try:
+        # 使用AI分析器获取排序后的股票
+        ranked_stocks = ai_analyzer.get_ranked_stocks()
+        
+        if not ranked_stocks:
+            return {"success": False, "message": "没有获取到实时股票数据"}
+        
+        return {
+            "success": True, 
+            "stocks": ranked_stocks,
+            "updated_at": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取排序股票时出错: {str(e)}")
 
 # 健康检查端点
 @app.get("/health", tags=["系统"])
