@@ -28,7 +28,7 @@ services:
 
   stock-backend:
     build:
-      context: ./backend
+      context: ./Backend
       dockerfile: Dockerfile
     container_name: stock_backend
     depends_on:
