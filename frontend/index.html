@@ -258,6 +258,7 @@
     <script>
         // API基础URL - 根据你的实际部署情况修改
         const API_BASE_URL = 'http://localhost:8000/api';
+        const API_KEY = 'your-secret-api-key'; // 与后端一致的API密钥
         let stockChart = null;
 
         // 页面加载时获取s列表和存储的数据
@@ -268,11 +269,32 @@
             await loadRankedStocks();
         });
 
+        // 通用API请求函数
+        async function fetchAPI(endpoint, options = {}) {
+            // 确保headers存在
+            if (!options.headers) {
+                options.headers = {};
+            }
+            
+            // 添加API密钥到请求头
+            options.headers['X-API-Key'] = API_KEY;
+            
+            // 发送请求
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+            
+            // 处理非2xx响应
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `请求失败: ${response.status}`);
+            }
+            
+            return response.json();
+        }
+
         // 加载s列表
         async function loadStocksList() {
             try {
-                const response = await fetch(`${API_BASE_URL}/stocks`);
-                const data = await response.json();
+                const data = await fetchAPI('/stocks');
                 
                 // 更新文本域
                 document.getElementById('stocksList').value = data.stocks.join(',');
@@ -298,7 +320,7 @@
             const stocks = stocksInput.split(',').map(s => s.trim()).filter(s => s);
             
             try {
-                const response = await fetch(`${API_BASE_URL}/stocks`, {
+                const result = await fetchAPI('/stocks', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -306,7 +328,6 @@
                     body: JSON.stringify({ stocks })
                 });
                 
-                const result = await response.json();
                 document.getElementById('updateMessage').textContent = result.message;
                 document.getElementById('updateMessage').className = result.success ? 'text-success' : 'text-danger';
                 

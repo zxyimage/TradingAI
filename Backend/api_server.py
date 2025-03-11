@@ -1,14 +1,51 @@
-from fastapi import FastAPI, Query, HTTPException, Depends
+from fastapi import FastAPI, Query, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.security.api_key import APIKeyHeader
+from starlette.status import HTTP_403_FORBIDDEN ,HTTP_429_TOO_MANY_REQUESTS
+import os, time
 from typing import List, Optional, Dict, Any, Union
+import redis
 from datetime import datetime, timedelta
 import json
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from pydantic import BaseModel
 
 from config import STOCKS_TO_TRACK, update_stocks_to_track, reload_configuration, DB_CONFIG
 from stock_ai_analyzer import StockAIAnalyzer
+
+# API密钥配置 - 推荐使用环境变量存储密钥
+API_KEY = os.getenv("TRADING_API_KEY", "your-secret-api-key")  # 请替换为你的密钥
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+# 定义允许的域名列表
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080,http://127.0.0.1:8080").split(",")
+
+# API密钥验证函数
+async def get_api_key(api_key_header: str = Depends(api_key_header)):
+    if api_key_header == API_KEY:
+        return api_key_header
+    raise HTTPException(
+        status_code=HTTP_403_FORBIDDEN, 
+        detail="无效的API密钥"
+    )
+
+# Referer 验证函数（可选的额外安全层）
+async def check_referer(request: Request):
+    referer = request.headers.get("referer", "")
+    valid_referer = False
+    for origin in ALLOWED_ORIGINS:
+        if referer.startswith(origin):
+            valid_referer = True
+            break
+    
+    if not valid_referer and referer:  # 如果有 referer 但不匹配
+        raise HTTPException(
+            status_code=HTTP_403_FORBIDDEN, 
+            detail="无效的来源"
+        )
+    return True
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -17,13 +54,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# 配置CORS
+# 配置CORS - 限制只允许特定域名
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源，生产环境应该限制
+    allow_origins=ALLOWED_ORIGINS,  # 只允许特定域名
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", API_KEY_NAME],  # 确保API密钥头被允许
 )
 
 # 初始化AI分析器
@@ -111,13 +148,49 @@ class RankedStocksResponse(BaseModel):
     stocks: Optional[List[Dict[str, Any]]] = None
     updated_at: Optional[str] = None
 
+
+# 速率限制配置
+RATE_LIMIT_SECONDS = 60  # 时间窗口（秒）
+RATE_LIMIT_REQUESTS = 10  # 允许的最大请求数
+
+# 速率限制依赖函数
+async def rate_limit(request: Request):
+    # 使用Redis客户端 - 复用已有的Redis连接
+    if redis_client:
+        client_ip = request.client.host
+        key = f"ratelimit:{client_ip}"
+        current_time = int(time.time())
+        window_start = current_time - RATE_LIMIT_SECONDS
+        
+        # 使用Redis ZREMRANGEBYSCORE移除窗口外的请求
+        redis_client.zremrangebyscore(key, 0, window_start)
+        
+        # 计算当前窗口内的请求数
+        request_count = redis_client.zcard(key)
+        
+        # 检查是否超过限制
+        if request_count >= RATE_LIMIT_REQUESTS:
+            raise HTTPException(
+                status_code=HTTP_429_TOO_MANY_REQUESTS,
+                detail="请求过于频繁，请稍后再试"
+            )
+        
+        # 添加本次请求记录
+        redis_client.zadd(key, {current_time: current_time})
+        
+        # 设置过期时间，避免key永久存在
+        redis_client.expire(key, RATE_LIMIT_SECONDS)
+    
+    return True
+
 # 创建数据库连接
 def get_db_engine() -> Engine:
     conn_str = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
     return create_engine(conn_str)
 
 # API端点: 获取当前跟踪的股票列表
-@app.get("/api/stocks", response_model=StockListResponse, tags=["股票配置"])
+@app.get("/api/stocks", response_model=StockListResponse, tags=["股票配置"], 
+         dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def get_stocks():
     """
     获取当前系统跟踪的所有股票代码列表
@@ -125,7 +198,8 @@ async def get_stocks():
     return {"success": True, "message": "获取成功", "stocks": STOCKS_TO_TRACK}
 
 # API端点: 更新要跟踪的股票列表
-@app.post("/api/stocks", response_model=StockListResponse, tags=["股票配置"])
+@app.post("/api/stocks", response_model=StockListResponse, tags=["股票配置"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def update_stocks(stock_list: StockListRequest):
     """
     更新系统要跟踪的股票列表
@@ -136,7 +210,8 @@ async def update_stocks(stock_list: StockListRequest):
     return {"success": success, "message": message, "stocks": STOCKS_TO_TRACK if success else None}
 
 # API端点: 获取股票数据
-@app.get("/api/stock_data", response_model=StockDataResponse, tags=["股票数据"])
+@app.get("/api/stock_data", response_model=StockDataResponse, tags=["股票数据"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def get_stock_data(
     code: str = Query(..., description="股票代码，例如 US.AAPL 或 HK.00700"),
     days: int = Query(30, description="获取多少天的数据，默认30天")
@@ -194,7 +269,8 @@ async def get_stock_data(
         raise HTTPException(status_code=500, detail=f"获取股票数据时出错: {str(e)}")
 
 # API端点: 获取股票AI分析
-@app.get("/api/stock_analysis", response_model=StockAnalysisResponse, tags=["股票分析"])
+@app.get("/api/stock_analysis", response_model=StockAnalysisResponse, tags=["股票分析"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def get_stock_analysis(
     code: str = Query(..., description="股票代码，例如 US.AAPL 或 HK.00700"),
     days: int = Query(30, description="分析多少天的数据，默认30天")
@@ -251,7 +327,8 @@ async def get_stock_analysis(
         raise HTTPException(status_code=500, detail=f"获取股票分析时出错: {str(e)}")
 
 # API端点: 获取所有存储的股票数据
-@app.get("/api/stored_stocks", response_model=StoredStocksResponse, tags=["股票数据"])
+@app.get("/api/stored_stocks", response_model=StoredStocksResponse, tags=["股票数据"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def get_stored_stocks():
     """
     获取系统中所有存储的股票数据概览
@@ -363,7 +440,8 @@ async def get_stored_stocks():
         raise HTTPException(status_code=500, detail=f"获取存储的股票数据时出错: {str(e)}")
 
 # API端点: 获取单只股票的所有数据
-@app.get("/api/stock_all_data", response_model=StockAllDataResponse, tags=["股票数据"])
+@app.get("/api/stock_all_data", response_model=StockAllDataResponse, tags=["股票数据"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def get_stock_all_data(
     code: str = Query(..., description="股票代码，例如 US.AAPL 或 HK.00700")
 ):
@@ -430,7 +508,8 @@ async def get_stock_all_data(
         raise HTTPException(status_code=500, detail=f"获取股票历史数据时出错: {str(e)}")
 
 # 新API端点: 获取实时股票分析
-@app.get("/api/realtime_analysis", response_model=StockRealtimeAnalysisResponse, tags=["实时分析"])
+@app.get("/api/realtime_analysis", response_model=StockRealtimeAnalysisResponse, tags=["实时分析"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def get_realtime_analysis(
     code: str = Query(..., description="股票代码，例如 US.AAPL 或 HK.00700")
 ):
@@ -454,7 +533,8 @@ async def get_realtime_analysis(
         raise HTTPException(status_code=500, detail=f"获取实时股票分析时出错: {str(e)}")
 
 # 新API端点: 获取排序后的股票列表
-@app.get("/api/ranked_stocks", response_model=RankedStocksResponse, tags=["实时分析"])
+@app.get("/api/ranked_stocks", response_model=RankedStocksResponse, tags=["实时分析"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def get_ranked_stocks():
     """
     获取根据均线策略排序的股票列表
@@ -476,7 +556,8 @@ async def get_ranked_stocks():
 
 
 # 新API端点: 获取所有股票名称
-@app.get("/api/stock_names", tags=["股票数据"])
+@app.get("/api/stock_names", tags=["股票数据"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def get_stock_names():
     """
     获取所有追踪的股票代码和对应的名称
@@ -504,7 +585,8 @@ async def get_stock_names():
         raise HTTPException(status_code=500, detail=f"获取股票名称时出错: {str(e)}")
 
 # 健康检查端点
-@app.get("/health", tags=["系统"])
+@app.get("/health", tags=["系统"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def health_check():
     """
     系统健康检查API
@@ -512,7 +594,8 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 # 系统信息端点
-@app.get("/info", tags=["系统"])
+@app.get("/info", tags=["系统"], 
+          dependencies=[Depends(get_api_key), Depends(check_referer), Depends(rate_limit)])
 async def system_info():
     """
     获取系统信息
