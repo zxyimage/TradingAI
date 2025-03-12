@@ -90,7 +90,7 @@ server {
         # 修正代理路径，确保包含 /api/
         #proxy_pass http://localhost:18000/api/;
         # 转发到广州服务器的API
-        proxy_pass http://1.123.123.1:18000/api/;
+        proxy_pass http://43.138.154.198:18000/api/;
 
         proxy_http_version 1.1;
         proxy_set_header Host $host;
