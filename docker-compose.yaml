@@ -53,7 +53,7 @@ services:
       - FUTU_PORT=${FUTU_PORT:-11111}
       # 显式添加API密钥和CORS设置
       - TRADING_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
-      - ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://localhost:3001,http://frontend:3001
+      - ALLOWED_ORIGINS=http://stock.superaihub.com,https://stock.superaihub.com
     volumes:
       - ./Backend:/app
     networks:
