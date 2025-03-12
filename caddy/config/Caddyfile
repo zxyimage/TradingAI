@@ -1,0 +1,33 @@
+# Caddyfile
+:18443 {
+    # 使用自签名证书
+    tls internal
+
+    # 设置响应头
+    header {
+        # 安全相关头信息
+        Strict-Transport-Security "max-age=31536000;"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        # 允许从新加坡服务器访问的 CORS 设置
+        Access-Control-Allow-Origin "https://stock.superaihub.com"
+        Access-Control-Allow-Methods "GET, POST, OPTIONS"
+        Access-Control-Allow-Headers "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,X-API-Key,If-Modified-Since,Cache-Control,Content-Type"
+        +Access-Control-Allow-Credentials "true"
+    }
+
+    # 反向代理到 backend 服务
+    reverse_proxy http://localhost:18000 {
+        # 转发原始 IP 和协议信息
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # 日志配置
+    log {
+        output file /data/access.log
+        format json
+    }
+}
