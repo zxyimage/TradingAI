@@ -76,7 +76,7 @@ services:
       - ./.env
     environment:
       # 在Docker环境中使用服务名
-      - NEXT_PUBLIC_API_BASE_URL=http://stock-backend:5000/api
+      - NEXT_PUBLIC_API_BASE_URL=https://stock.superaihub.com/api
       - NEXT_PUBLIC_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
       - NODE_ENV=production
     restart: unless-stopped

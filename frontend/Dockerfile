@@ -15,7 +15,7 @@ RUN npm ci
 COPY . .
 
 # 设置环境变量
-ENV NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
+ENV NEXT_PUBLIC_API_BASE_URL=https://stock.superaihub.com/api
 ENV NEXT_PUBLIC_API_KEY=your-secret-api-key
 
 # 构建应用
