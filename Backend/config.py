@@ -25,9 +25,10 @@ REDIS_CONFIG = {
 
 # Futu API配置
 FUTU_CONFIG = {
-    "host": os.getenv("FUTU_HOST", "127.0.0.1"),
+    "host": os.getenv("FUTU_HOST", "host.docker.internal"),
     "port": int(os.getenv("FUTU_PORT", "11111"))
 }
+
 
 # 从JSON文件读取要跟踪的股票
 def load_stocks_from_json(json_file_path='stocks_config.json'):
