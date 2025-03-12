@@ -18,7 +18,7 @@ DB_CONFIG = {
 # Redis配置
 REDIS_CONFIG = {
     "host": os.getenv("REDIS_HOST", "localhost"),
-    "port": int(os.getenv("REDIS_PORT", "16379")),
+    "port": int(os.getenv("REDIS_PORT", "6379")),
     "db": 0,
     "decode_responses": True
 }
