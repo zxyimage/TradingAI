@@ -48,7 +48,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       # 使用特殊的Docker DNS名称连接宿主机上的FutuOpenD
-      - FUTU_HOST=host.docker.internal
+      #- FUTU_HOST=host.docker.internal
+      - FUTU_HOST=172.17.0.1
       - FUTU_PORT=${FUTU_PORT:-11111}
       # 显式添加API密钥和CORS设置
       - TRADING_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
