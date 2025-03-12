@@ -88,18 +88,18 @@ server {
     # 股票API服务
     location /api/ {
         # 修正代理路径，确保包含 /api/
-        proxy_pass http://localhost:18000/api/;
+        #proxy_pass http://localhost:18000/api/;
+        # 转发到广州服务器的API
+        proxy_pass http://1.123.123.1:18000/api/;
+
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         
-        # 修改：允许同域请求和指定域名的请求
-        # 移除严格限制，改为在 CORS 头中控制
-        # if ($http_origin !~ '^https?://stock\.superaihub\.com$') {
-        #     return 403;
-        # }
+        # 转发API密钥头
+        proxy_set_header X-API-Key $http_x_api_key;
     
         # CORS 配置 - 只允许来自 stock.superaihub.com 的请求
         if ($request_method = 'OPTIONS') {
