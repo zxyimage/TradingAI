@@ -54,7 +54,7 @@ services:
       - TRADING_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
       - ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://localhost:3001,http://frontend:3001
     volumes:
-      - ./backend:/app
+      - ./Backend:/app
     networks:
       - stock-network
     # 确保host.docker.internal在Linux上也能工作
