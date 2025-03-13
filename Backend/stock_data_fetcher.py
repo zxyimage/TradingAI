@@ -27,7 +27,15 @@ except Exception as e:
 # 创建数据库连接
 def get_db_engine():
     conn_str = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
-    return create_engine(conn_str)
+    return create_engine(
+        conn_str,
+        pool_size=5,               # 设置连接池初始大小
+        max_overflow=10,           # 允许的最大溢出连接数
+        pool_timeout=30,           # 获取连接的超时时间
+        pool_recycle=1800,         # 回收连接的时间(秒)
+        pool_pre_ping=True         # 使用前 ping 检查连接是否有效
+    )
+
 
 # 初始化数据库模式
 def init_database(engine):
