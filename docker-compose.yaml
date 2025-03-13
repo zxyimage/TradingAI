@@ -1,67 +1,67 @@
 services:
-  timescaledb:
-    image: timescale/timescaledb:latest-pg14
-    command: postgres -c max_connections=200  # 增加最大连接数
-    container_name: stock_timescaledb
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=stockuser
-      - POSTGRES_PASSWORD=stockpassword
-      - POSTGRES_DB=stockdb
-    volumes:
-      - timescaledb_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    networks:
-      - stock-network
+  # timescaledb:
+  #   image: timescale/timescaledb:latest-pg14
+  #   command: postgres -c max_connections=200  # 增加最大连接数
+  #   container_name: stock_timescaledb
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     - POSTGRES_USER=stockuser
+  #     - POSTGRES_PASSWORD=stockpassword
+  #     - POSTGRES_DB=stockdb
+  #   volumes:
+  #     - timescaledb_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   networks:
+  #     - stock-network
 
-  redis:
-    image: redis:alpine
-    container_name: stock_redis
-    ports:
-      - "16379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    networks:
-      - stock-network
-    command: redis-server --appendonly yes
+  # redis:
+  #   image: redis:alpine
+  #   container_name: stock_redis
+  #   ports:
+  #     - "16379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   restart: unless-stopped
+  #   networks:
+  #     - stock-network
+  #   command: redis-server --appendonly yes
 
-  stock-backend:
-    build:
-      context: ./Backend
-      dockerfile: Dockerfile
-    container_name: stock_backend
-    depends_on:
-      - timescaledb
-      - redis
-    ports:
-      - "18000:5000"  # 暴露API服务端口
-    # 添加环境变量文件
-    env_file:
-      - ./.env
-    environment:
-      - DB_HOST=timescaledb
-      - DB_USER=stockuser
-      - DB_PASSWORD=stockpassword
-      - DB_NAME=stockdb
-      # Redis配置
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      # 使用特殊的Docker DNS名称连接宿主机上的FutuOpenD
-      #- FUTU_HOST=host.docker.internal
-      - FUTU_HOST=172.17.0.1
-      - FUTU_PORT=${FUTU_PORT:-11111}
-      # 显式添加API密钥和CORS设置
-      - TRADING_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
-      - ALLOWED_ORIGINS=http://stock.superaihub.com,https://stock.superaihub.com,43.134.0.68,http://43.138.154.198:3001/,*
-    volumes:
-      - ./Backend:/app
-    networks:
-      - stock-network
-    # 确保host.docker.internal在Linux上也能工作
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # stock-backend:
+  #   build:
+  #     context: ./Backend
+  #     dockerfile: Dockerfile
+  #   container_name: stock_backend
+  #   depends_on:
+  #     - timescaledb
+  #     - redis
+  #   ports:
+  #     - "18000:5000"  # 暴露API服务端口
+  #   # 添加环境变量文件
+  #   env_file:
+  #     - ./.env
+  #   environment:
+  #     - DB_HOST=timescaledb
+  #     - DB_USER=stockuser
+  #     - DB_PASSWORD=stockpassword
+  #     - DB_NAME=stockdb
+  #     # Redis配置
+  #     - REDIS_HOST=redis
+  #     - REDIS_PORT=6379
+  #     # 使用特殊的Docker DNS名称连接宿主机上的FutuOpenD
+  #     #- FUTU_HOST=host.docker.internal
+  #     - FUTU_HOST=172.17.0.1
+  #     - FUTU_PORT=${FUTU_PORT:-11111}
+  #     # 显式添加API密钥和CORS设置
+  #     - TRADING_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
+  #     - ALLOWED_ORIGINS=http://stock.superaihub.com,https://stock.superaihub.com,43.134.0.68,http://43.138.154.198:3001/,*
+  #   volumes:
+  #     - ./Backend:/app
+  #   networks:
+  #     - stock-network
+  #   # 确保host.docker.internal在Linux上也能工作
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
 
   #前端服务，在新加坡的服务器运行，不要在广州的服务器运行
   frontend:
@@ -80,8 +80,8 @@ services:
       # 在Docker环境中使用服务名
       #- NEXT_PUBLIC_API_BASE_URL=https://stock.superaihub.com/api
       # 使用相对路径，这样请求会自动发送到当前域名下的 /api 路径
-      - NEXT_PUBLIC_API_BASE_URL=http://43.138.154.198:18000/api
-      #- NEXT_PUBLIC_API_BASE_URL=/api/
+      #- NEXT_PUBLIC_API_BASE_URL=http://43.138.154.198:18000/api
+      - NEXT_PUBLIC_API_BASE_URL=/api
       - NEXT_PUBLIC_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
       - NODE_ENV=production
     restart: unless-stopped
@@ -109,8 +109,8 @@ networks:
   stock-network:
     driver: bridge
 
-volumes:
-  timescaledb_data:
-  redis_data:
+# volumes:
+#   timescaledb_data:
+#   redis_data:
   # caddy_data:
   # caddy_config:
