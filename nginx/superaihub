@@ -17,6 +17,9 @@ server {
     ssl_certificate /etc/ssl/superaihub.com.crt;
     ssl_certificate_key /etc/ssl/superaihub.com.key;
 
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+
     location /static/ {
         alias /var/www/superaihub.com/static/;
     }
@@ -75,6 +78,9 @@ server {
     ssl_certificate /etc/ssl/superaihub.com.crt;
     ssl_certificate_key /etc/ssl/superaihub.com.key;
 
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    
     # 股票前端服务
     location / {
         proxy_pass http://localhost:3001;
@@ -87,43 +93,58 @@ server {
 
     # 股票API服务
     location /api/ {
-        # 转发到广州服务器的API
+        # 1. 代理设置
         proxy_pass http://43.138.154.198:18000/api/;
-
-        # 基本代理设置
         proxy_http_version 1.1;
+        
+        # 2. 请求头设置
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-API-Key $http_x_api_key;
         
-        # 重要：增加超时设置
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 180s;
-        proxy_read_timeout 180s;
+        # 3. 极端超时设置 - 给足够时间处理大响应
+        proxy_connect_timeout 300s;     # 连接超时
+        proxy_send_timeout 300s;        # 发送超时
+        proxy_read_timeout 300s;        # 读取超时
         
-        # 增加缓冲区设置
-        proxy_buffer_size 128k;
-        proxy_buffers 4 256k;
-        proxy_busy_buffers_size 256k;
-        proxy_temp_file_write_size 256k;
+        # 4. 大幅增加缓冲区 - 对于大数据请求非常重要
+        proxy_buffer_size 512k;         # 增加单个缓冲区大小
+        proxy_buffers 16 512k;          # 增加缓冲区数量和大小
+        proxy_busy_buffers_size 1m;     # 增加繁忙缓冲区大小
         
-        # 关闭CORS配置，让后端处理
-        # 删除或注释掉所有CORS相关的添加头信息
+        # 5. 启用临时文件 - 处理大响应
+        proxy_max_temp_file_size 2048m; # 允许大临时文件
+        proxy_temp_file_write_size 512k; # 临时文件写入大小
 
-        # 处理大响应
-        proxy_max_temp_file_size 1024m;
+        # 6. 开启压缩 - 减小传输数据大小
+        gzip on;
+        gzip_min_length 1000;
+        gzip_proxied any;
+        gzip_types application/json;
         
-        # Cloudflare兼容性
-        proxy_set_header Connection "";  # 禁用keepalive，避免Cloudflare干扰
+        # 7. TCP优化
+        tcp_nodelay on;
+        tcp_nopush on;
+        keepalive_timeout 65;
+        
+        # 8. 移除所有CORS设置 - 让后端处理
+        # 删除所有 add_header 'Access-Control-*' 相关配置
+        
+        # 9. 关闭重定向限制 - 防止大响应被视为错误
+        proxy_redirect off;
+        
+        # 10. 禁用重新解析上游响应
+        proxy_pass_header Date;
+        proxy_pass_header Server;
     }
 
     error_page 500 502 503 504 /50x.html;
     location = /50x.html {
-        root /usr/share/nginx/html;
+        root /usr/share/nginx/html;  # 确保此目录存在
     }
 
     access_log /var/log/nginx/stock.superaihub.com_access.log;
-    error_log /var/log/nginx/stock.superaihub.com_error.log;
+    error_log /var/log/nginx/stock.superaihub.com_error.log debug;
 }
