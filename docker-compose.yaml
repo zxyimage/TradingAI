@@ -80,8 +80,8 @@ services:
       # 在Docker环境中使用服务名
       #- NEXT_PUBLIC_API_BASE_URL=https://stock.superaihub.com/api
       # 使用相对路径，这样请求会自动发送到当前域名下的 /api 路径
-      #- NEXT_PUBLIC_API_BASE_URL=https://43.138.154.198:18000/api
-      - NEXT_PUBLIC_API_BASE_URL=/api/
+      - NEXT_PUBLIC_API_BASE_URL=http://43.138.154.198:18000
+      #- NEXT_PUBLIC_API_BASE_URL=/api/
       - NEXT_PUBLIC_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
       - NODE_ENV=production
     restart: unless-stopped
