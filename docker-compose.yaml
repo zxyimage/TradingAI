@@ -54,7 +54,7 @@ services:
       - FUTU_PORT=${FUTU_PORT:-11111}
       # 显式添加API密钥和CORS设置
       - TRADING_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
-      - ALLOWED_ORIGINS=http://43.138.154.198:3001/,https://43.138.154.198:3001/,https://43.138.154.198:443/,https://43.138.154.198:18443/
+      - ALLOWED_ORIGINS=http://43.138.154.198:3001/,https://43.138.154.198:3001/,https://43.138.154.198:443/,https://43.138.154.198:18443/,
     volumes:
       - ./Backend:/app
     networks:
