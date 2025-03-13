@@ -1,42 +1,17 @@
 {
-    # 全局设置
-    admin off  # 禁用管理 API 以提高安全性
-    auto_https off  # 因为我们只使用 IP 地址，禁用自动 HTTPS 
-    http_port 80
-    https_port 18443
-    
-    # 使用自签名证书，因为我们用 IP 访问
-    pki {
-        ca stock_ai
-    }
+  # 全局设置
+  admin off
+  auto_https off
 }
 
-# HTTPS 服务配置
-:18443 {
-    # 使用自签名证书
-    tls internal
-    
-    # API 请求代理到后端
-    handle /api/* {
-        reverse_proxy stock-backend:5000
-    }
-    
-    # 其他请求代理到前端
-    handle {
-        reverse_proxy frontend:3000
-    }
-    
-    # 安全响应头
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        -Server
-    }
-}
-
-# HTTP 服务 - 自动重定向到 HTTPS
+# HTTP 配置
 :80 {
-    redir https://{host}:18443{uri} permanent
+  respond "HTTP is working!"
+}
+
+# HTTPS 配置 (使用自定义证书)
+:18443 {
+  # 使用自定义证书
+  tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
+  respond "HTTPS with custom cert is working!"
 }
