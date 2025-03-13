@@ -89,27 +89,27 @@ services:
     networks:
       - stock-network
   
-  # 取消注释并修改 Caddy 服务配置
-  caddy:
-    image: caddy:2-alpine
-    container_name: stock_caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"  # HTTP 端口
-      - "18443:18443"  # HTTPS 端口
-    volumes:
-      - ./caddy/config/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data   # 存储证书和其他数据
-      - caddy_config:/config  # 存储配置
-      - ./caddy/certs:/etc/caddy/certs:ro
-    networks:
-      - stock-network
-    depends_on:
-      - stock-backend
-      - frontend
-    # 确保能解析到内部主机名
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # # 取消注释并修改 Caddy 服务配置
+  # caddy:
+  #   image: caddy:2-alpine
+  #   container_name: stock_caddy
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"  # HTTP 端口
+  #     - "18443:18443"  # HTTPS 端口
+  #   volumes:
+  #     - ./caddy/config/Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy_data:/data   # 存储证书和其他数据
+  #     - caddy_config:/config  # 存储配置
+  #     - ./caddy/certs:/etc/caddy/certs:ro
+  #   networks:
+  #     - stock-network
+  #   depends_on:
+  #     - stock-backend
+  #     - frontend
+  #   # 确保能解析到内部主机名
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
 
 networks:
   stock-network:
@@ -118,5 +118,5 @@ networks:
 volumes:
   timescaledb_data:
   redis_data:
-  caddy_data:
-  caddy_config:
+  # caddy_data:
+  # caddy_config:
