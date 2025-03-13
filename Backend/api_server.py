@@ -35,8 +35,8 @@ API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 # 定义允许的域名列表
-#ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080,http://127.0.0.1:8080").split(",")
-ALLOWED_ORIGINS = ["*"]  # 允许所有来源
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8080,http://127.0.0.1:8080").split(",")
+#ALLOWED_ORIGINS = ["*"]  # 允许所有来源
 
 print(f"API服务器启动，使用的API密钥: {API_KEY}")
 print(f"允许的源: {ALLOWED_ORIGINS}")
@@ -52,18 +52,18 @@ async def get_api_key(api_key_header: str = Depends(api_key_header)):
 
 # Referer 验证函数（可选的额外安全层）
 async def check_referer(request: Request):
-    # referer = request.headers.get("referer", "")
-    # valid_referer = False
-    # for origin in ALLOWED_ORIGINS:
-    #     if referer.startswith(origin):
-    #         valid_referer = True
-    #         break
+    referer = request.headers.get("referer", "")
+    valid_referer = False
+    for origin in ALLOWED_ORIGINS:
+        if referer.startswith(origin):
+            valid_referer = True
+            break
     
-    # if not valid_referer and referer:  # 如果有 referer 但不匹配
-    #     raise HTTPException(
-    #         status_code=HTTP_403_FORBIDDEN, 
-    #         detail="无效的来源"
-    #     )
+    if not valid_referer and referer:  # 如果有 referer 但不匹配
+        raise HTTPException(
+            status_code=HTTP_403_FORBIDDEN, 
+            detail="无效的来源"
+        )
     return True
 
 # 创建FastAPI应用
@@ -76,7 +76,7 @@ app = FastAPI(
 # 配置CORS - 限制只允许特定域名
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 只允许特定域名
+    allow_origins=ALLOWED_ORIGINS,  # 只允许特定域名
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*", API_KEY_NAME],  # 确保API密钥头被允许
