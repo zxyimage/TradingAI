@@ -69,8 +69,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: stock_frontend
-    depends_on:
-      - stock-backend
+    # depends_on:
+    #   - stock-backend
     ports:
       - "3001:3000"
     # 添加环境变量文件
