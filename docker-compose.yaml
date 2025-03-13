@@ -54,7 +54,7 @@ services:
       - FUTU_PORT=${FUTU_PORT:-11111}
       # 显式添加API密钥和CORS设置
       - TRADING_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
-      - ALLOWED_ORIGINS=http://43.138.154.198:3001/,https://43.138.154.198:3001/,https://43.138.154.198:443/,https://43.138.154.198:18443/,* # 允许所有来源
+      - ALLOWED_ORIGINS=http://43.138.154.198,https://43.138.154.198,https://43.138.154.198:443,https://43.138.154.198:18443,* # 允许所有来源
     restart: unless-stopped
     volumes:
       - ./Backend:/app
@@ -81,30 +81,34 @@ services:
       # 在Docker环境中使用服务名
       #- NEXT_PUBLIC_API_BASE_URL=https://stock.superaihub.com/api
       # 使用相对路径，这样请求会自动发送到当前域名下的 /api 路径
-      - NEXT_PUBLIC_API_BASE_URL=http://43.138.154.198:18000/api
-      #- NEXT_PUBLIC_API_BASE_URL=/api/
+      #- NEXT_PUBLIC_API_BASE_URL=http://43.138.154.198:18000/api
+      #- NEXT_PUBLIC_API_BASE_URL=/api
       - NEXT_PUBLIC_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
       - NODE_ENV=production
     restart: unless-stopped
     networks:
       - stock-network
   
-  # # 新增 Caddy 服务，替代 Nginx，在广州的服务器运行，不要在新加坡的服务器运行
-  # caddy:
-  #   image: caddy:2-alpine
-  #   container_name: stock_caddy
-  #   restart: unless-stopped
-  #   ports:
-  #     - "18443:18443"  # HTTPS 端口
-  #   volumes:
-  #     - ./caddy/config/Caddyfile:/etc/caddy/Caddyfile:ro
-  #     - caddy_data:/data   # 存储证书和其他数据
-  #     - caddy_config:/config  # 存储配置
-  #   networks:
-  #     - stock-network
-  #   # 确保能解析到内部主机名 (backend)
-  #   extra_hosts:
-  #     - "host.docker.internal:host-gateway"
+  # 取消注释并修改 Caddy 服务配置
+  caddy:
+    image: caddy:2-alpine
+    container_name: stock_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"  # HTTP 端口
+      - "18443:18443"  # HTTPS 端口
+    volumes:
+      - ./caddy/config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data   # 存储证书和其他数据
+      - caddy_config:/config  # 存储配置
+    networks:
+      - stock-network
+    depends_on:
+      - stock-backend
+      - frontend
+    # 确保能解析到内部主机名
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   stock-network:
@@ -113,5 +117,5 @@ networks:
 volumes:
   timescaledb_data:
   redis_data:
-  # caddy_data:
-  # caddy_config:
+  caddy_data:
+  caddy_config:

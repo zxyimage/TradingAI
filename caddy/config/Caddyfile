@@ -1,33 +1,42 @@
-# Caddyfile
+{
+    # 全局设置
+    admin off  # 禁用管理 API 以提高安全性
+    auto_https off  # 因为我们只使用 IP 地址，禁用自动 HTTPS 
+    http_port 80
+    https_port 18443
+    
+    # 使用自签名证书，因为我们用 IP 访问
+    pki {
+        ca stock_ai
+    }
+}
+
+# HTTPS 服务配置
 :18443 {
     # 使用自签名证书
     tls internal
-
-    # 设置响应头
+    
+    # API 请求代理到后端
+    handle /api/* {
+        reverse_proxy stock-backend:5000
+    }
+    
+    # 其他请求代理到前端
+    handle {
+        reverse_proxy frontend:3000
+    }
+    
+    # 安全响应头
     header {
-        # 安全相关头信息
-        Strict-Transport-Security "max-age=31536000;"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
-        X-XSS-Protection "1; mode=block"
-        # 允许从新加坡服务器访问的 CORS 设置
-        Access-Control-Allow-Origin "https://stock.superaihub.com"
-        Access-Control-Allow-Methods "GET, POST, OPTIONS"
-        Access-Control-Allow-Headers "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,X-API-Key,If-Modified-Since,Cache-Control,Content-Type"
-        +Access-Control-Allow-Credentials "true"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
     }
+}
 
-    # 反向代理到 backend 服务
-    reverse_proxy http://localhost:18000 {
-        # 转发原始 IP 和协议信息
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
-    }
-
-    # 日志配置
-    log {
-        output file /data/access.log
-        format json
-    }
+# HTTP 服务 - 自动重定向到 HTTPS
+:80 {
+    redir https://{host}:18443{uri} permanent
 }
