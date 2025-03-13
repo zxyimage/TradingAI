@@ -82,7 +82,7 @@ services:
       #- NEXT_PUBLIC_API_BASE_URL=https://stock.superaihub.com/api
       # 使用相对路径，这样请求会自动发送到当前域名下的 /api 路径
       #- NEXT_PUBLIC_API_BASE_URL=http://43.138.154.198:18000/api
-      #- NEXT_PUBLIC_API_BASE_URL=/api
+      - NEXT_PUBLIC_API_BASE_URL=/api
       - NEXT_PUBLIC_API_KEY=${TRADING_API_KEY:-your-secret-api-key}
       - NODE_ENV=production
     restart: unless-stopped
@@ -90,26 +90,22 @@ services:
       - stock-network
   
   # # 取消注释并修改 Caddy 服务配置
-  # caddy:
-  #   image: caddy:2-alpine
-  #   container_name: stock_caddy
-  #   restart: unless-stopped
-  #   ports:
-  #     - "80:80"  # HTTP 端口
-  #     - "18443:18443"  # HTTPS 端口
-  #   volumes:
-  #     - ./caddy/config/Caddyfile:/etc/caddy/Caddyfile:ro
-  #     - caddy_data:/data   # 存储证书和其他数据
-  #     - caddy_config:/config  # 存储配置
-  #     - ./caddy/certs:/etc/caddy/certs:ro
-  #   networks:
-  #     - stock-network
-  #   depends_on:
-  #     - stock-backend
-  #     - frontend
-  #   # 确保能解析到内部主机名
-  #   extra_hosts:
-  #     - "host.docker.internal:host-gateway"
+  # 添加 nginx 服务
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: stock_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - stock-network
+    depends_on:
+      - stock-backend
+      - frontend
 
 networks:
   stock-network:
