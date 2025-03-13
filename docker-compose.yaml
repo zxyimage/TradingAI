@@ -101,6 +101,7 @@ services:
       - ./caddy/config/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data   # 存储证书和其他数据
       - caddy_config:/config  # 存储配置
+      - ./caddy/certs:/etc/caddy/certs:ro
     networks:
       - stock-network
     depends_on:
