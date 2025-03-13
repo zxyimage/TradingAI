@@ -16,7 +16,7 @@ COPY . .
 
 # 设置环境变量
 #ENV NEXT_PUBLIC_API_BASE_URL=https://stock.superaihub.com/api
-ENV NEXT_PUBLIC_API_BASE_URL=http://43.138.154.198:18000
+ENV NEXT_PUBLIC_API_BASE_URL=http://43.138.154.198:18000/api
 ENV NEXT_PUBLIC_API_KEY=your-secret-api-key
 
 # 构建应用
